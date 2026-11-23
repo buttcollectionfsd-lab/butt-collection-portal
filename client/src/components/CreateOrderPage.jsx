@@ -14,6 +14,9 @@ import {
   FileText,
   AlertCircle
 } from 'lucide-react';
+import ScriptWarning from './ScriptWarning';
+import { findArabicIssues, stripArabicFrom } from '../utils/arabicScript';
+import { formatOrderNumber } from '../utils/orderNumber';
 
 export default function CreateOrderPage({ onSave, onCancel, editingOrder }) {
   const [formData, setFormData] = useState({
@@ -152,19 +155,31 @@ export default function CreateOrderPage({ onSave, onCancel, editingOrder }) {
   const totalCartons = formData.items.reduce((sum, i) => sum + (Number(i.cartons) || 0), 0);
   const balance = totalAmount - (Number(formData.advancePaid) || 0);
 
+  // Urdu / Arabic letters break the PDF, Word and Excel exports — block them.
+  const scriptIssues = findArabicIssues(formData);
+
+  const handleRemoveUrdu = () => {
+    setFormData(prev => stripArabicFrom(prev));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.orderNumber.trim()) {
-      alert('Order Number likhna zaroori hai (e.g. Order 6, ALOO9, JY008)');
+      alert('Order Number likhna zaroori hai (e.g. 6, ALOO9, JY008)');
       return;
     }
     if (!formData.customer.trim()) {
       alert('Customer / Buyer ka naam likhna zaroori hai (e.g. Shahid Sab, SP Imports)');
       return;
     }
+    if (scriptIssues.length > 0) {
+      alert('Urdu / Arabic text is not allowed. Please fix the highlighted fields, or click "Remove Urdu text".');
+      return;
+    }
 
     onSave({
       ...formData,
+      orderNumber: formatOrderNumber(formData.orderNumber),
       totalPieces,
       totalAmount,
       amountReceived: Number(formData.advancePaid) || 0,
@@ -214,7 +229,9 @@ export default function CreateOrderPage({ onSave, onCancel, editingOrder }) {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        
+
+        <ScriptWarning issues={scriptIssues} onAction={handleRemoveUrdu} />
+
         {/* Section 1: Order Meta & Customer Details */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex items-center space-x-2 border-b border-slate-100 pb-3">
@@ -237,11 +254,15 @@ export default function CreateOrderPage({ onSave, onCancel, editingOrder }) {
               <input
                 type="text"
                 required
-                placeholder="e.g. Order 6, ALOO9, JY008"
+                placeholder="e.g. 6, ALOO9, JY008"
                 value={formData.orderNumber}
                 onChange={e => setFormData({ ...formData, orderNumber: e.target.value })}
+                onBlur={() => setFormData(prev => ({ ...prev, orderNumber: formatOrderNumber(prev.orderNumber) }))}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
               />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Number auto-formats to ORDER #001
+              </p>
             </div>
 
             {/* Customer Name */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Navbar from './components/Navbar';
 import DashboardTab from './components/DashboardTab';
 import OrdersTab from './components/OrdersTab';
@@ -8,6 +8,8 @@ import PaymentLedgerTab from './components/PaymentLedgerTab';
 import PaymentModal from './components/PaymentModal';
 import CartonLabelTab from './components/CartonLabelTab';
 import ExportsTab from './components/ExportsTab';
+import ScriptWarning from './components/ScriptWarning';
+import { findArabicIssues } from './utils/arabicScript';
 import { Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 const API_BASE = 'http://localhost:5000/api';
@@ -33,6 +35,7 @@ export default function App() {
 
   // Notification Toast
   const [toast, setToast] = useState(null);
+  const [cleaningStoredUrdu, setCleaningStoredUrdu] = useState(false);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -221,6 +224,31 @@ export default function App() {
     }
   };
 
+  // Saved records that still contain Urdu / Arabic letters
+  const storedScriptIssues = useMemo(
+    () => [
+      ...findArabicIssues(orders),
+      ...findArabicIssues(payments),
+      ...findArabicIssues(labels)
+    ],
+    [orders, payments, labels]
+  );
+
+  const handleCleanStoredUrdu = async () => {
+    try {
+      setCleaningStoredUrdu(true);
+      const res = await fetch(`${API_BASE}/maintenance/arabic-clean`, { method: 'POST' });
+      if (!res.ok) throw new Error('Could not clean the saved records');
+      const summary = await res.json();
+      await loadData(true);
+      showToast(`Cleaned ${summary.fields} field${summary.fields === 1 ? '' : 's'} — records are now in English`);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setCleaningStoredUrdu(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col selection:bg-blue-600 selection:text-white">
       
@@ -265,6 +293,19 @@ export default function App() {
           </div>
         ) : (
           <>
+            {storedScriptIssues.length > 0 && (
+              <div className="mb-5">
+                <ScriptWarning
+                  issues={storedScriptIssues}
+                  title={`Urdu text found in ${storedScriptIssues.length} saved field${storedScriptIssues.length === 1 ? '' : 's'}`}
+                  description="These saved records still contain Urdu / Arabic letters, which break the PDF, Word and Excel exports. Fix them once and the data stays clean."
+                  actionLabel="Fix saved records"
+                  onAction={handleCleanStoredUrdu}
+                  isBusy={cleaningStoredUrdu}
+                />
+              </div>
+            )}
+
             {/* 1. Dashboard Overview */}
             {activeTab === 'dashboard' && (
               <DashboardTab

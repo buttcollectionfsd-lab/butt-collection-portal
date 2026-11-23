@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Tag, Plus, Trash2, Printer, Download, Save, Check, Layout, Sparkles, Sliders } from 'lucide-react';
+import ScriptWarning from './ScriptWarning';
+import { findArabicIssues, stripArabicFrom } from '../utils/arabicScript';
 
 export default function CartonLabelTab({ labels, saveLabel }) {
   // Available Templates with 'screenshot_bold' as Default!
@@ -100,6 +102,21 @@ export default function CartonLabelTab({ labels, saveLabel }) {
     });
   };
 
+  // Urdu / Arabic letters cannot be rendered by the carton label PDF.
+  const scriptIssues = findArabicIssues(selectedLabel);
+
+  const handleRemoveUrdu = () => {
+    setSelectedLabel(prev => stripArabicFrom(prev));
+  };
+
+  const handleSaveLabel = () => {
+    if (scriptIssues.length > 0) {
+      alert('Urdu / Arabic text is not allowed on carton labels. Please fix the highlighted fields, or click "Remove Urdu text".');
+      return;
+    }
+    saveLabel(selectedLabel);
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -189,6 +206,8 @@ export default function CartonLabelTab({ labels, saveLabel }) {
         
         {/* Left Column: Form Editor (5 cols) */}
         <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 no-print text-xs">
+          <ScriptWarning issues={scriptIssues} onAction={handleRemoveUrdu} />
+
           <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
             <h3 className="font-bold text-slate-900 text-sm flex items-center space-x-1.5">
               <Sliders className="w-4 h-4 text-blue-600" />
@@ -303,7 +322,7 @@ export default function CartonLabelTab({ labels, saveLabel }) {
 
           <div className="pt-3 border-t border-slate-100 flex items-center space-x-2">
             <button
-              onClick={() => saveLabel(selectedLabel)}
+              onClick={handleSaveLabel}
               className="flex-1 flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl font-bold transition shadow-sm"
             >
               <Save className="w-4 h-4" />

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, PoundSterling, Check } from 'lucide-react';
+import ScriptWarning from './ScriptWarning';
+import { findArabicIssues, stripArabicFrom } from '../utils/arabicScript';
 
 const defaultForm = {
   orderId: '',
@@ -42,10 +44,21 @@ export default function PaymentModal({ isOpen, onClose, onSave, orders }) {
     }
   };
 
+  // Urdu / Arabic letters break the ledger PDF and Excel exports.
+  const scriptIssues = findArabicIssues(formData);
+
+  const handleRemoveUrdu = () => {
+    setFormData(prev => stripArabicFrom(prev));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.amount || Number(formData.amount) <= 0) {
       alert('Please enter a valid payment amount');
+      return;
+    }
+    if (scriptIssues.length > 0) {
+      alert('Urdu / Arabic text is not allowed. Please fix the highlighted fields, or click "Remove Urdu text".');
       return;
     }
     onSave(formData);
@@ -77,6 +90,8 @@ export default function PaymentModal({ isOpen, onClose, onSave, orders }) {
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs md:text-sm">
           
+          <ScriptWarning issues={scriptIssues} onAction={handleRemoveUrdu} />
+
           <div>
             <label className="block font-semibold text-slate-700 mb-1">
               Select Related Order (Optional)

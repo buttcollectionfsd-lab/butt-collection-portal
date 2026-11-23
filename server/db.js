@@ -20,7 +20,7 @@ const INITIAL_DATA = {
   orders: [
     {
       id: "ord-1",
-      orderNumber: "Order 1",
+      orderNumber: "ORDER #001",
       customer: "Shahid Sab",
       manufacturer: "Butt Collection",
       dispatchCity: "Faisalabad",
@@ -32,11 +32,11 @@ const INITIAL_DATA = {
       totalAmount: 7200.00,
       amountReceived: 4032.00,
       balance: 3168.00,
-      notes: "300 GSM Gym Sets dispatched from Faisalabad on 17 Oct 2026 (آئٹم نمبر 1)",
+      notes: "300 GSM Gym Sets dispatched from Faisalabad on 17 Oct 2026 (Item No. 1)",
       items: [
         {
           id: "item-1-1",
-          style: "سادہ جم سیٹ 300 GSM (Plain Gym Set)",
+          style: "Plain Gym Set 300 GSM",
           gsm: "300",
           color: "Black",
           sizeBreakdown: { xs: 120, s: 120, m: 120, l: 60, xl: 60 },
@@ -48,7 +48,7 @@ const INITIAL_DATA = {
         },
         {
           id: "item-1-2",
-          style: "پینل جم سیٹ 300 GSM (Panel Gym Set)",
+          style: "Panel Gym Set 300 GSM",
           gsm: "300",
           color: "Pink / Gray",
           sizeBreakdown: { xs: 120, s: 120, m: 120, l: 60, xl: 60 },
@@ -62,7 +62,7 @@ const INITIAL_DATA = {
     },
     {
       id: "ord-2",
-      orderNumber: "Order 2",
+      orderNumber: "ORDER #002",
       customer: "Shahid Sab",
       manufacturer: "Butt Collection",
       dispatchCity: "Faisalabad",
@@ -73,12 +73,12 @@ const INITIAL_DATA = {
       totalPieces: 1186,
       totalAmount: 8161.50,
       amountReceived: 5000.00,
-      balance: 6329.50, // 3168 + 8161.50 - 5000 = 6329.50 (Diary: 6329 بقایا)
-      notes: "Dispatched on 21 Oct (آئٹم نمبر 2). Half sleeve trouser, Gym set Alo, Half raglan Alo, W-FOX parachute & pant",
+      balance: 6329.50, // 3168 + 8161.50 - 5000 = 6329.50 (Diary: 6329 balance)
+      notes: "Dispatched on 21 Oct (Item No. 2). Half sleeve trouser, Gym set Alo, Half raglan Alo, W-FOX parachute & pant",
       items: [
         {
           id: "item-2-1",
-          style: "ہاف بازو ٹراؤزر ٹی شرٹ (Half Sleeve Trouser T-Shirt)",
+          style: "Half Sleeve Trouser T-Shirt",
           gsm: "",
           color: "Assorted",
           sizeBreakdown: { xs: 32, s: 32, m: 48, l: 32, xl: 16 },
@@ -90,7 +90,7 @@ const INITIAL_DATA = {
         },
         {
           id: "item-2-2",
-          style: "جم سیٹ Alo (Gym Set Alo)",
+          style: "Gym Set Alo",
           gsm: "",
           color: "Assorted",
           sizeBreakdown: { xs: 32, s: 32, m: 48, l: 32, xl: 16 },
@@ -102,7 +102,7 @@ const INITIAL_DATA = {
         },
         {
           id: "item-2-3",
-          style: "ہاف راگلان Alo (Half Raglan Alo)",
+          style: "Half Raglan Alo",
           gsm: "",
           color: "Assorted",
           sizeBreakdown: { xs: 50, s: 64, m: 64, l: 50, xl: 28 },
@@ -114,7 +114,7 @@ const INITIAL_DATA = {
         },
         {
           id: "item-2-4",
-          style: "W-FOX پیرا شوٹ (W-FOX Parachute Top)",
+          style: "W-FOX Parachute Top",
           gsm: "Parachute",
           color: "Assorted",
           sizeBreakdown: { xs: 60, s: 80, m: 90, l: 60, xl: 30 },
@@ -126,7 +126,7 @@ const INITIAL_DATA = {
         },
         {
           id: "item-2-5",
-          style: "W-FOX پینٹ (W-FOX Pant Trouser)",
+          style: "W-FOX Pant Trouser",
           gsm: "",
           color: "Assorted",
           sizeBreakdown: { xs: 50, s: 70, m: 80, l: 60, xl: 30 },
@@ -140,7 +140,7 @@ const INITIAL_DATA = {
     },
     {
       id: "ord-3",
-      orderNumber: "Order 3",
+      orderNumber: "ORDER #003",
       customer: "Shahid Sab",
       manufacturer: "Butt Collection",
       dispatchCity: "Faisalabad",
@@ -152,11 +152,11 @@ const INITIAL_DATA = {
       totalAmount: 12512.00,
       amountReceived: 7500.00,
       balance: 11341.50, // 6329.50 + 12512 - 7500 = 11341.50 (Diary: 11341)
-      notes: "Shipped on 5 Nov 2026 (آرٹیکل نمبر 3). Gym set Alo, Alo Parachute T-Shirt, Alo Raglan Fleece, W-FOX Parachute",
+      notes: "Shipped on 5 Nov 2026 (Article No. 3). Gym set Alo, Alo Parachute T-Shirt, Alo Raglan Fleece, W-FOX Parachute",
       items: [
         {
           id: "item-3-1",
-          style: "جم سیٹ Alo (Gym Set Alo)",
+          style: "Gym Set Alo",
           gsm: "",
           color: "Assorted",
           sizeBreakdown: { xs: 150, s: 200, m: 200, l: 150, xl: 68 },
@@ -168,7 +168,7 @@ const INITIAL_DATA = {
         },
         {
           id: "item-3-2",
-          style: "Alo پیرا شوٹ ٹی شرٹ (Alo Parachute T-Shirt)",
+          style: "Alo Parachute T-Shirt",
           gsm: "Parachute",
           color: "Assorted",
           sizeBreakdown: { xs: 80, s: 100, m: 120, l: 76, xl: 40 },
@@ -180,7 +180,7 @@ const INITIAL_DATA = {
         },
         {
           id: "item-3-3",
-          style: "Alo راگلان فلیس (Alo Raglan Fleece)",
+          style: "Alo Raglan Fleece",
           gsm: "Fleece",
           color: "Assorted",
           sizeBreakdown: { xs: 80, s: 100, m: 120, l: 76, xl: 40 },
@@ -192,7 +192,7 @@ const INITIAL_DATA = {
         },
         {
           id: "item-3-4",
-          style: "W-FOX پیرا شوٹ (W-FOX Parachute)",
+          style: "W-FOX Parachute",
           gsm: "Parachute",
           color: "Assorted",
           sizeBreakdown: { xs: 12, s: 16, m: 20, l: 10, xl: 6 },
@@ -206,7 +206,7 @@ const INITIAL_DATA = {
     },
     {
       id: "ord-4",
-      orderNumber: "Order 4",
+      orderNumber: "ORDER #004",
       customer: "Shahid Sab",
       manufacturer: "Butt Collection",
       dispatchCity: "Faisalabad",
@@ -218,11 +218,11 @@ const INITIAL_DATA = {
       totalAmount: 9928.00,
       amountReceived: 11400.00, // 5200 + 6200
       balance: 9869.50, // 11341.50 + 9928 - 11400 = 9869.50 (Diary: 9869)
-      notes: "Shipped 19 Nov (آرٹیکل نمبر 4). Fleece W-FOX, Half Fleece Alo, Fleece Pant Alo. Received installments: £5,200 + £6,200 via Farman Sahib",
+      notes: "Shipped 19 Nov (Article No. 4). Fleece W-FOX, Half Fleece Alo, Fleece Pant Alo. Received installments: £5,200 + £6,200 via Farman Sahib",
       items: [
         {
           id: "item-4-1",
-          style: "فلیس W-FOX (Fleece W-FOX)",
+          style: "Fleece W-FOX",
           gsm: "Fleece",
           color: "Assorted",
           sizeBreakdown: { xs: 80, s: 100, m: 120, l: 76, xl: 40 },
@@ -234,7 +234,7 @@ const INITIAL_DATA = {
         },
         {
           id: "item-4-2",
-          style: "ہاف فلیس Alo (Half Fleece Alo)",
+          style: "Half Fleece Alo",
           gsm: "Fleece",
           color: "Assorted",
           sizeBreakdown: { xs: 100, s: 130, m: 150, l: 92, xl: 40 },
@@ -246,7 +246,7 @@ const INITIAL_DATA = {
         },
         {
           id: "item-4-3",
-          style: "پینٹ فلیس Alo (Fleece Pant Alo)",
+          style: "Fleece Pant Alo",
           gsm: "Fleece",
           color: "Assorted",
           sizeBreakdown: { xs: 110, s: 150, m: 170, l: 100, xl: 46 },
@@ -260,7 +260,7 @@ const INITIAL_DATA = {
     },
     {
       id: "ord-5",
-      orderNumber: "Order 5",
+      orderNumber: "ORDER #005",
       customer: "Shahid Sab",
       manufacturer: "Butt Collection",
       dispatchCity: "Faisalabad",
@@ -271,12 +271,12 @@ const INITIAL_DATA = {
       totalPieces: 1504,
       totalAmount: 11144.00,
       amountReceived: 0.00,
-      balance: 21013.50, // 9869.50 + 11144 = 21013.50 (Diary aakhri line: 21013 ٹوٹل شاہد صاحب)
-      notes: "Running Production Order 24 Nov (آرٹیکل نمبر 5). Alo Fleece Set, Fleece Top, Gym Set, Full Fleece Trouser",
+      balance: 21013.50, // 9869.50 + 11144 = 21013.50 (Diary last line: 21013 total for Shahid Sahib)
+      notes: "Running Production Order 24 Nov (Article No. 5). Alo Fleece Set, Fleece Top, Gym Set, Full Fleece Trouser",
       items: [
         {
           id: "item-5-1",
-          style: "Alo فلیس سیٹ (Alo Fleece Set)",
+          style: "Alo Fleece Set",
           gsm: "Fleece",
           color: "Assorted",
           sizeBreakdown: { xs: 60, s: 80, m: 90, l: 50, xl: 20 },
@@ -288,7 +288,7 @@ const INITIAL_DATA = {
         },
         {
           id: "item-5-2",
-          style: "فلیس ٹاپ (Fleece Top)",
+          style: "Fleece Top",
           gsm: "Fleece",
           color: "Assorted",
           sizeBreakdown: { xs: 36, s: 48, m: 54, l: 30, xl: 12 },
@@ -300,7 +300,7 @@ const INITIAL_DATA = {
         },
         {
           id: "item-5-3",
-          style: "جم سیٹ (Gym Set)",
+          style: "Gym Set",
           gsm: "300",
           color: "Assorted",
           sizeBreakdown: { xs: 120, s: 160, m: 180, l: 100, xl: 48 },
@@ -312,7 +312,7 @@ const INITIAL_DATA = {
         },
         {
           id: "item-5-4",
-          style: "فلیس ٹراؤزر (Full Fleece Trouser)",
+          style: "Full Fleece Trouser",
           gsm: "Fleece",
           color: "Assorted",
           sizeBreakdown: { xs: 80, s: 110, m: 120, l: 70, xl: 36 },
@@ -329,56 +329,56 @@ const INITIAL_DATA = {
     {
       id: "pay-1",
       orderId: "ord-1",
-      orderNumber: "Order 1",
+      orderNumber: "ORDER #001",
       customer: "Shahid Sab",
       date: "2026-10-18",
       amount: 4032.00,
       method: "Bank Transfer",
-      reference: "وصول شاہد صاحب",
+      reference: "Wasool - Shahid Sahib",
       notes: "Payment for Order 1"
     },
     {
       id: "pay-2",
       orderId: "ord-2",
-      orderNumber: "Order 2",
+      orderNumber: "ORDER #002",
       customer: "Shahid Sab",
       date: "2026-10-22",
       amount: 5000.00,
       method: "Bank Transfer",
-      reference: "وصول شاہد صاحب",
+      reference: "Wasool - Shahid Sahib",
       notes: "Payment for Order 2"
     },
     {
       id: "pay-3",
       orderId: "ord-3",
-      orderNumber: "Order 3",
+      orderNumber: "ORDER #003",
       customer: "Shahid Sab",
       date: "2026-11-06",
       amount: 7500.00,
       method: "Bank Transfer",
-      reference: "وصول شاہد صاحب",
+      reference: "Wasool - Shahid Sahib",
       notes: "Payment for Order 3"
     },
     {
       id: "pay-4",
       orderId: "ord-4",
-      orderNumber: "Order 4",
+      orderNumber: "ORDER #004",
       customer: "Shahid Sab",
       date: "2026-11-19",
       amount: 5200.00,
       method: "Bank Transfer",
-      reference: "فرمان صاحب - وصول 1",
+      reference: "Farman Sahib - Wasool 1",
       notes: "Installment 1 for Order 4 via Farman Sahib"
     },
     {
       id: "pay-5",
       orderId: "ord-4",
-      orderNumber: "Order 4",
+      orderNumber: "ORDER #004",
       customer: "Shahid Sab",
       date: "2026-11-20",
       amount: 6200.00,
       method: "Bank Transfer",
-      reference: "فرمان صاحب - وصول 2",
+      reference: "Farman Sahib - Wasool 2",
       notes: "Installment 2 for Order 4 via Farman Sahib"
     }
   ],
@@ -447,10 +447,8 @@ function writeDb(data) {
   }
 }
 
-// Force overwrite data.json with the exact 5 orders
-writeDb(INITIAL_DATA);
-
 module.exports = {
   readDb,
-  writeDb
+  writeDb,
+  INITIAL_DATA
 };

@@ -14,6 +14,12 @@ const { readDb, writeDb } = require('./db');
 const { generateFullTrackerWorkbook } = require('./services/excelService');
 const { generateOrderPdfBuffer, generateCartonLabelPdfBuffer } = require('./services/pdfService');
 const { generateOrderDocx } = require('./services/docxService');
+const {
+  findArabicFields,
+  sanitizeTextFields,
+  collectChangedFields
+} = require('./utils/arabicScript');
+const { formatOrderNumber } = require('./utils/orderNumber');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -65,6 +71,71 @@ async function getCompanyInfo() {
     if (comp) return { ...comp, id: comp._id.toString() };
   }
   return readDb().company;
+}
+
+// -------------------------------------------------------------
+// URDU / ARABIC SCRIPT GUARD
+// Arabic-script characters break the PDF / Word / Excel exports, so
+// they are rejected on write and stripped by the maintenance route.
+// -------------------------------------------------------------
+function rejectArabicPayload(req, res, next) {
+  const fields = findArabicFields(req.body || {});
+  if (fields.length > 0) {
+    return res.status(400).json({
+      error: 'Urdu / Arabic script is not allowed in these fields. Use English or Roman Urdu.',
+      fields
+    });
+  }
+  next();
+}
+
+async function cleanArabicRecords() {
+  const summary = { orders: 0, payments: 0, labels: 0, fields: 0 };
+
+  if (getIsConnected()) {
+    const collections = [
+      { model: Order, key: 'orders' },
+      { model: Payment, key: 'payments' },
+      { model: CartonLabel, key: 'labels' }
+    ];
+
+    for (const { model, key } of collections) {
+      const docs = await model.find().lean();
+      for (const doc of docs) {
+        const { _id, __v, ...rest } = doc;
+        const cleaned = sanitizeTextFields(rest);
+        const patch = collectChangedFields(rest, cleaned);
+        const changedCount = Object.keys(patch).length;
+        if (changedCount === 0) continue;
+        await model.findByIdAndUpdate(_id, { $set: patch }, { runValidators: false });
+        summary[key] += 1;
+        summary.fields += changedCount;
+      }
+    }
+    return summary;
+  }
+
+  const db = readDb();
+  const collections = [
+    { records: db.orders || [], key: 'orders' },
+    { records: db.payments || [], key: 'payments' },
+    { records: db.cartonLabels || [], key: 'labels' }
+  ];
+
+  collections.forEach(({ records, key }) => {
+    records.forEach((record, index) => {
+      const cleaned = sanitizeTextFields(record);
+      const patch = collectChangedFields(record, cleaned);
+      const changedCount = Object.keys(patch).length;
+      if (changedCount === 0) return;
+      records[index] = { ...record, ...patch };
+      summary[key] += 1;
+      summary.fields += changedCount;
+    });
+  });
+
+  writeDb(db);
+  return summary;
 }
 
 // -------------------------------------------------------------
@@ -196,7 +267,7 @@ app.get('/api/orders/:id', async (req, res) => {
   }
 });
 
-app.post('/api/orders', async (req, res) => {
+app.post('/api/orders', rejectArabicPayload, async (req, res) => {
   try {
     const {
       orderNumber,
@@ -236,7 +307,7 @@ app.post('/api/orders', async (req, res) => {
     });
 
     const orderData = {
-      orderNumber,
+      orderNumber: formatOrderNumber(orderNumber),
       customer,
       manufacturer,
       dispatchCity,
@@ -267,7 +338,7 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-app.put('/api/orders/:id', async (req, res) => {
+app.put('/api/orders/:id', rejectArabicPayload, async (req, res) => {
   try {
     const updatedItems = req.body.items ? req.body.items.map(item => {
       const qty = Number(item.qty) || 0;
@@ -289,6 +360,10 @@ app.put('/api/orders/:id', async (req, res) => {
 
     // Remove id/_id fields from payload to avoid MongoDB conflict
     const { id: _ignoredId, _id: _ignoredMongoId, __v, ...cleanBody } = req.body;
+
+    if (typeof cleanBody.orderNumber === 'string') {
+      cleanBody.orderNumber = formatOrderNumber(cleanBody.orderNumber);
+    }
 
     const payload = {
       ...cleanBody,
@@ -340,7 +415,7 @@ app.get('/api/payments', async (req, res) => {
   }
 });
 
-app.post('/api/payments', async (req, res) => {
+app.post('/api/payments', rejectArabicPayload, async (req, res) => {
   try {
     const { orderId, orderNumber, customer, date, amount, method, reference, notes } = req.body;
     if (!amount || Number(amount) <= 0) {
@@ -436,7 +511,7 @@ app.get('/api/labels', async (req, res) => {
   }
 });
 
-app.post('/api/labels', async (req, res) => {
+app.post('/api/labels', rejectArabicPayload, async (req, res) => {
   try {
     if (getIsConnected()) {
       const newLabel = await CartonLabel.create(req.body);
@@ -452,7 +527,7 @@ app.post('/api/labels', async (req, res) => {
   }
 });
 
-app.put('/api/labels/:id', async (req, res) => {
+app.put('/api/labels/:id', rejectArabicPayload, async (req, res) => {
   try {
     const { id: _ignoredId, _id: _ignoredMongoId, __v, ...cleanBody } = req.body;
     if (getIsConnected()) {
@@ -466,6 +541,36 @@ app.put('/api/labels/:id', async (req, res) => {
     db.cartonLabels[idx] = { ...db.cartonLabels[idx], ...cleanBody };
     writeDb(db);
     res.json(db.cartonLabels[idx]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// MAINTENANCE — URDU / ARABIC SCRIPT CLEANUP
+// -------------------------------------------------------------
+app.get('/api/maintenance/arabic-scan', async (req, res) => {
+  try {
+    const orders = await getAllOrders();
+    const payments = await getAllPayments();
+    const labels = await getAllLabels();
+
+    const fields = [
+      ...findArabicFields(orders).map(f => ({ ...f, collection: 'orders' })),
+      ...findArabicFields(payments).map(f => ({ ...f, collection: 'payments' })),
+      ...findArabicFields(labels).map(f => ({ ...f, collection: 'labels' }))
+    ];
+
+    res.json({ total: fields.length, fields });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/maintenance/arabic-clean', async (req, res) => {
+  try {
+    const summary = await cleanArabicRecords();
+    res.json({ success: true, ...summary });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

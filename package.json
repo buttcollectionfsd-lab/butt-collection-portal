@@ -1,0 +1,11 @@
+{
+  "name": "butt-collection-portal",
+  "version": "1.0.0",
+  "description": "Butt Collection Faisalabad - Merchandiser Order Tracking, Payment Ledger & Document Export Portal",
+  "scripts": {
+    "server": "cd server && node server.js",
+    "client": "cd client && npm run dev"
+  },
+  "author": "Butt Collection Merchandising",
+  "license": "ISC"
+}

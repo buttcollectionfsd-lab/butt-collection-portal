@@ -11,19 +11,32 @@ import {
   CheckCircle2, 
   Clock, 
   AlertCircle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FileSearch,
+  Truck,
+  Package,
+  Receipt,
+  FilePlus
 } from 'lucide-react';
+import DocumentViewerModal from './DocumentViewerModal';
 
 export default function OrdersTab({ 
   orders, 
+  payments,
+  company,
   openNewOrderModal, 
   openEditOrderModal, 
   openOrderDetails, 
+  openGatePass,
+  openPackingList,
+  openInvoice,
+  openCreateDocuments,
   deleteOrder, 
   updateOrderStatus 
 }) {
   const [filterStatus, setFilterStatus] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewerOrder, setViewerOrder] = useState(null);
 
   const filteredOrders = (orders || []).filter(order => {
     // Status filter
@@ -200,6 +213,16 @@ export default function OrdersTab({
                       {/* Instant Export & Action Buttons */}
                       <td className="py-3 px-3 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center space-x-1.5">
+
+                          {/* Create / manage the three order documents */}
+                          <button
+                            onClick={() => openCreateDocuments?.(order)}
+                            title="Create Gate Pass, Packing List & Invoice"
+                            className="flex items-center space-x-1 px-2 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-[10px] transition whitespace-nowrap"
+                          >
+                            <FilePlus className="w-3.5 h-3.5" />
+                            <span>Create Docs</span>
+                          </button>
                           
                           {/* View details */}
                           <button
@@ -208,6 +231,42 @@ export default function OrdersTab({
                             className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded"
                           >
                             <Eye className="w-4 h-4" />
+                          </button>
+
+                          {/* View documents without downloading */}
+                          <button
+                            onClick={() => setViewerOrder(order)}
+                            title="View Work Order, PDF & Excel (bina download)"
+                            className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded"
+                          >
+                            <FileSearch className="w-4 h-4" />
+                          </button>
+
+                          {/* Gate Pass preview + print */}
+                          <button
+                            onClick={() => openGatePass?.(order)}
+                            title="Gate Pass (view, edit & print)"
+                            className="p-1.5 text-sky-700 hover:bg-sky-50 rounded"
+                          >
+                            <Truck className="w-4 h-4" />
+                          </button>
+
+                          {/* Packing List preview + print */}
+                          <button
+                            onClick={() => openPackingList?.(order)}
+                            title="Packing List (view, edit & print)"
+                            className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded"
+                          >
+                            <Package className="w-4 h-4" />
+                          </button>
+
+                          {/* Commercial Invoice preview + print */}
+                          <button
+                            onClick={() => openInvoice?.(order)}
+                            title="Commercial Invoice (view, edit & print)"
+                            className="p-1.5 text-violet-700 hover:bg-violet-50 rounded"
+                          >
+                            <Receipt className="w-4 h-4" />
                           </button>
 
                           {/* Download PDF */}
@@ -259,6 +318,19 @@ export default function OrdersTab({
           </table>
         </div>
       </div>
+
+      {viewerOrder && (
+        <DocumentViewerModal
+          key={viewerOrder.id}
+          title="Order Documents"
+          order={viewerOrder}
+          orders={orders}
+          payments={payments}
+          company={company}
+          initialTab="work-order"
+          onClose={() => setViewerOrder(null)}
+        />
+      )}
 
     </div>
   );

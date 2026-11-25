@@ -18,6 +18,16 @@ const OrderItemSchema = new mongoose.Schema({
   amount: { type: Number, required: true, default: 0 }
 });
 
+const GatePassItemSchema = new mongoose.Schema({
+  id: { type: String, default: '' },
+  style: { type: String, default: '' },
+  gsm: { type: String, default: '' },
+  color: { type: String, default: '' },
+  cartons: { type: Number, default: 0 },
+  qty: { type: Number, default: 0 },
+  remarks: { type: String, default: '' }
+}, { _id: false });
+
 const OrderSchema = new mongoose.Schema({
   orderNumber: { type: String, required: true, trim: true },
   customer: { type: String, required: true, trim: true },
@@ -36,6 +46,44 @@ const OrderSchema = new mongoose.Schema({
   amountReceived: { type: Number, default: 0 },
   balance: { type: Number, default: 0 },
   notes: { type: String, default: '' },
+  docTitle: { type: String, default: 'MERCHANDISER WORK ORDER' },
+  docStatus: { type: String, default: '' },
+  footerLeft: { type: String, default: 'Prepared by Merchandiser' },
+  footerRight: { type: String, default: 'Authorized Signature / Factory' },
+  gatePassNo: { type: String, default: '' },
+  gatePassDate: { type: String, default: '' },
+  gatePassVehicle: { type: String, default: '' },
+  gatePassDriver: { type: String, default: '' },
+  gatePassDestination: { type: String, default: '' },
+  gatePassPurpose: { type: String, default: 'Dispatch of finished goods' },
+  gatePassRemarks: { type: String, default: '' },
+  gatePassTitle: { type: String, default: '' },
+  gatePassGeneratedOn: { type: String, default: '' },
+  gatePassCustomer: { type: String, default: '' },
+  gatePassOrderNo: { type: String, default: '' },
+  gatePassCompanyName: { type: String, default: '' },
+  gatePassCompanyTagline: { type: String, default: '' },
+  gatePassCompanyAddress: { type: String, default: '' },
+  gatePassPreparedBy: { type: String, default: '' },
+  gatePassGateKeeper: { type: String, default: '' },
+  gatePassReceivedBy: { type: String, default: '' },
+  gatePassAuthorizedBy: { type: String, default: '' },
+  gatePassFooterNote: { type: String, default: '' },
+  gatePassItems: { type: [GatePassItemSchema], default: undefined },
+  packingListNo: { type: String, default: '' },
+  packingDate: { type: String, default: '' },
+  packingNetWeight: { type: String, default: '' },
+  packingGrossWeight: { type: String, default: '' },
+  packingCartonLength: { type: String, default: '' },
+  packingCartonWidth: { type: String, default: '' },
+  packingCartonHeight: { type: String, default: '' },
+  packingCbm: { type: String, default: '' },
+  packingNotes: { type: String, default: '' },
+  invoiceNo: { type: String, default: '' },
+  invoiceDate: { type: String, default: '' },
+  invoiceTerms: { type: String, default: 'Payment due on receipt' },
+  invoiceBankDetails: { type: String, default: '' },
+  invoiceNotes: { type: String, default: '' },
   items: [OrderItemSchema]
 }, {
   timestamps: true,

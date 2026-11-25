@@ -12,14 +12,28 @@ const { Order, Payment, CartonLabel, Company } = models;
 const { readDb, writeDb } = require('./db');
 
 const { generateFullTrackerWorkbook } = require('./services/excelService');
-const { generateOrderPdfBuffer, generateCartonLabelPdfBuffer } = require('./services/pdfService');
-const { generateOrderDocx } = require('./services/docxService');
+const {
+  generateOrderPdfBuffer,
+  generateCartonLabelPdfBuffer,
+  generateGatePassPdfBuffer,
+  generatePackingListPdfBuffer,
+  generateInvoicePdfBuffer
+} = require('./services/pdfService');
+const {
+  generateOrderDocx,
+  generateGatePassDocx,
+  generatePackingListDocx,
+  generateInvoiceDocx
+} = require('./services/docxService');
 const {
   findArabicFields,
   sanitizeTextFields,
   collectChangedFields
 } = require('./utils/arabicScript');
 const { formatOrderNumber } = require('./utils/orderNumber');
+const { formatGatePassNumber } = require('./utils/gatePass');
+const { formatPackingListNumber } = require('./utils/packingList');
+const { formatInvoiceNumber } = require('./utils/invoice');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -278,6 +292,31 @@ app.post('/api/orders', rejectArabicPayload, async (req, res) => {
       deadline,
       status = 'In Progress',
       notes = '',
+      docTitle = 'MERCHANDISER WORK ORDER',
+      docStatus = '',
+      footerLeft = 'Prepared by Merchandiser',
+      footerRight = 'Authorized Signature / Factory',
+      gatePassNo = '',
+      gatePassDate = '',
+      gatePassVehicle = '',
+      gatePassDriver = '',
+      gatePassDestination = '',
+      gatePassPurpose = 'Dispatch of finished goods',
+      gatePassRemarks = '',
+      packingListNo = '',
+      packingDate = '',
+      packingNetWeight = '',
+      packingGrossWeight = '',
+      packingCartonLength = '',
+      packingCartonWidth = '',
+      packingCartonHeight = '',
+      packingCbm = '',
+      packingNotes = '',
+      invoiceNo = '',
+      invoiceDate = '',
+      invoiceTerms = 'Payment due on receipt',
+      invoiceBankDetails = '',
+      invoiceNotes = '',
       items = []
     } = req.body;
 
@@ -320,6 +359,31 @@ app.post('/api/orders', rejectArabicPayload, async (req, res) => {
       amountReceived: 0,
       balance: totalAmount,
       notes,
+      docTitle,
+      docStatus,
+      footerLeft,
+      footerRight,
+      gatePassNo,
+      gatePassDate,
+      gatePassVehicle,
+      gatePassDriver,
+      gatePassDestination,
+      gatePassPurpose,
+      gatePassRemarks,
+      packingListNo,
+      packingDate,
+      packingNetWeight,
+      packingGrossWeight,
+      packingCartonLength,
+      packingCartonWidth,
+      packingCartonHeight,
+      packingCbm,
+      packingNotes,
+      invoiceNo,
+      invoiceDate,
+      invoiceTerms,
+      invoiceBankDetails,
+      invoiceNotes,
       items: processedItems
     };
 
@@ -619,7 +683,7 @@ app.get('/api/export/pdf/order/:id', async (req, res) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="${order.orderNumber.replace(/\s+/g, '_')}_Order_Sheet.pdf"`
+      `${req.query.inline ? 'inline' : 'attachment'}; filename="${order.orderNumber.replace(/\s+/g, '_')}_Order_Sheet.pdf"`
     );
 
     res.send(buffer);
@@ -629,7 +693,160 @@ app.get('/api/export/pdf/order/:id', async (req, res) => {
   }
 });
 
-// 3. Export Carton Label as PDF (.pdf) with multi-template support
+// 3. Export Dispatch Gate Pass as PDF (.pdf)
+app.get('/api/export/pdf/gate-pass/:id', async (req, res) => {
+  try {
+    const orders = await getAllOrders();
+    const company = await getCompanyInfo();
+    const order = orders.find(o => o.id === req.params.id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const buffer = await generateGatePassPdfBuffer(order, company);
+    const gateNo = formatGatePassNumber(order).replace(/\s+/g, '_');
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `${req.query.inline ? 'inline' : 'attachment'}; filename="${gateNo}_Gate_Pass.pdf"`
+    );
+
+    res.send(buffer);
+  } catch (err) {
+    console.error('Error generating Gate Pass PDF:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Export Dispatch Gate Pass as Microsoft Word (.docx)
+app.get('/api/export/docx/gate-pass/:id', async (req, res) => {
+  try {
+    const orders = await getAllOrders();
+    const company = await getCompanyInfo();
+    const order = orders.find(o => o.id === req.params.id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const buffer = await generateGatePassDocx(order, company);
+    const gateNo = formatGatePassNumber(order).replace(/\s+/g, '_');
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${gateNo}_Gate_Pass.docx"`
+    );
+
+    res.send(buffer);
+  } catch (err) {
+    console.error('Error generating Gate Pass Word document:', err);
+    res.status(500).json({ error: 'Failed to generate Gate Pass document' });
+  }
+});
+
+// 5. Export Packing List as PDF (.pdf)
+app.get('/api/export/pdf/packing-list/:id', async (req, res) => {
+  try {
+    const orders = await getAllOrders();
+    const company = await getCompanyInfo();
+    const order = orders.find(o => o.id === req.params.id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const buffer = await generatePackingListPdfBuffer(order, company);
+    const listNo = formatPackingListNumber(order).replace(/\s+/g, '_');
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `${req.query.inline ? 'inline' : 'attachment'}; filename="${listNo}_Packing_List.pdf"`
+    );
+
+    res.send(buffer);
+  } catch (err) {
+    console.error('Error generating Packing List PDF:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 6. Export Packing List as Microsoft Word (.docx)
+app.get('/api/export/docx/packing-list/:id', async (req, res) => {
+  try {
+    const orders = await getAllOrders();
+    const company = await getCompanyInfo();
+    const order = orders.find(o => o.id === req.params.id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const buffer = await generatePackingListDocx(order, company);
+    const listNo = formatPackingListNumber(order).replace(/\s+/g, '_');
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${listNo}_Packing_List.docx"`
+    );
+
+    res.send(buffer);
+  } catch (err) {
+    console.error('Error generating Packing List Word document:', err);
+    res.status(500).json({ error: 'Failed to generate Packing List document' });
+  }
+});
+
+// 7. Export Commercial Invoice as PDF (.pdf)
+app.get('/api/export/pdf/invoice/:id', async (req, res) => {
+  try {
+    const orders = await getAllOrders();
+    const company = await getCompanyInfo();
+    const order = orders.find(o => o.id === req.params.id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const buffer = await generateInvoicePdfBuffer(order, company);
+    const invoiceNo = formatInvoiceNumber(order).replace(/\s+/g, '_');
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `${req.query.inline ? 'inline' : 'attachment'}; filename="${invoiceNo}_Invoice.pdf"`
+    );
+
+    res.send(buffer);
+  } catch (err) {
+    console.error('Error generating Invoice PDF:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8. Export Commercial Invoice as Microsoft Word (.docx)
+app.get('/api/export/docx/invoice/:id', async (req, res) => {
+  try {
+    const orders = await getAllOrders();
+    const company = await getCompanyInfo();
+    const order = orders.find(o => o.id === req.params.id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const buffer = await generateInvoiceDocx(order, company);
+    const invoiceNo = formatInvoiceNumber(order).replace(/\s+/g, '_');
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${invoiceNo}_Invoice.docx"`
+    );
+
+    res.send(buffer);
+  } catch (err) {
+    console.error('Error generating Invoice Word document:', err);
+    res.status(500).json({ error: 'Failed to generate Invoice document' });
+  }
+});
+
+// 9. Export Carton Label as PDF (.pdf) with multi-template support
 app.get('/api/export/pdf/label/:id', async (req, res) => {
   try {
     const labels = await getAllLabels();
@@ -643,7 +860,7 @@ app.get('/api/export/pdf/label/:id', async (req, res) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="${label.style || 'Carton'}_Label_${template}.pdf"`
+      `${req.query.inline ? 'inline' : 'attachment'}; filename="${label.style || 'Carton'}_Label_${template}.pdf"`
     );
 
     res.send(buffer);
@@ -653,7 +870,7 @@ app.get('/api/export/pdf/label/:id', async (req, res) => {
   }
 });
 
-// 4. Export Order as Microsoft Word (.docx)
+// 6. Export Order as Microsoft Word (.docx)
 app.get('/api/export/docx/order/:id', async (req, res) => {
   try {
     const orders = await getAllOrders();

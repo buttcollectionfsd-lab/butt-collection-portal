@@ -12,13 +12,17 @@ import {
   Package, 
   CheckCircle2, 
   FileText,
-  AlertCircle
+  AlertCircle,
+  Eye
 } from 'lucide-react';
 import ScriptWarning from './ScriptWarning';
+import WorkOrderPreview from './WorkOrderPreview';
 import { findArabicIssues, stripArabicFrom } from '../utils/arabicScript';
 import { formatOrderNumber } from '../utils/orderNumber';
 
-export default function CreateOrderPage({ onSave, onCancel, editingOrder }) {
+export default function CreateOrderPage({ onSave, onCancel, editingOrder, company }) {
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
   const [formData, setFormData] = useState({
     orderNumber: '',
     customer: 'Shahid Sab',
@@ -28,6 +32,10 @@ export default function CreateOrderPage({ onSave, onCancel, editingOrder }) {
     deadline: '',
     status: 'In Progress',
     notes: '',
+    docTitle: 'MERCHANDISER WORK ORDER',
+    docStatus: '',
+    footerLeft: 'Prepared by Merchandiser',
+    footerRight: 'Authorized Signature / Factory',
     advancePaid: 0,
     paymentMethod: 'Bank Transfer',
     paymentRef: 'Advance Wasool',
@@ -54,6 +62,10 @@ export default function CreateOrderPage({ onSave, onCancel, editingOrder }) {
         advancePaid: editingOrder.amountReceived || 0,
         paymentMethod: 'Bank Transfer',
         paymentRef: 'Wasool Record',
+        docTitle: editingOrder.docTitle || 'MERCHANDISER WORK ORDER',
+        docStatus: editingOrder.docStatus || '',
+        footerLeft: editingOrder.footerLeft || 'Prepared by Merchandiser',
+        footerRight: editingOrder.footerRight || 'Authorized Signature / Factory',
         items: editingOrder.items && editingOrder.items.length > 0 ? editingOrder.items : [
           {
             id: `item-${Date.now()}-0`,
@@ -212,18 +224,29 @@ export default function CreateOrderPage({ onSave, onCancel, editingOrder }) {
           </div>
         </div>
 
-        {/* Live Top Financial Metric Ticker */}
-        <div className="flex items-center space-x-3 bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl text-xs">
-          <div>
-            <span className="text-slate-400 block text-[10px] font-bold uppercase">Total Pieces</span>
-            <span className="font-mono font-bold text-slate-900 text-sm">{totalPieces.toLocaleString()} Pcs</span>
-          </div>
-          <div className="h-6 w-px bg-slate-300"></div>
-          <div>
-            <span className="text-slate-400 block text-[10px] font-bold uppercase">Order Total</span>
-            <span className="font-mono font-extrabold text-blue-700 text-sm">
-              £{totalAmount.toLocaleString('en-GB', { minimumFractionDigits: 2 })}
-            </span>
+        {/* Live Preview + Top Financial Metric Ticker */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setIsPreviewOpen(true)}
+            className="flex items-center space-x-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition active:scale-95"
+          >
+            <Eye className="w-4 h-4 text-blue-300" />
+            <span>Preview Work Order</span>
+          </button>
+
+          <div className="flex items-center space-x-3 bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl text-xs">
+            <div>
+              <span className="text-slate-400 block text-[10px] font-bold uppercase">Total Pieces</span>
+              <span className="font-mono font-bold text-slate-900 text-sm">{totalPieces.toLocaleString()} Pcs</span>
+            </div>
+            <div className="h-6 w-px bg-slate-300"></div>
+            <div>
+              <span className="text-slate-400 block text-[10px] font-bold uppercase">Order Total</span>
+              <span className="font-mono font-extrabold text-blue-700 text-sm">
+                £{totalAmount.toLocaleString('en-GB', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -622,6 +645,94 @@ export default function CreateOrderPage({ onSave, onCancel, editingOrder }) {
           />
         </div>
 
+        {/* Section 5: Document Header & Footer (PDF / Word) */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center font-bold text-sm">
+                5
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Document Header &amp; Footer</h2>
+                <p className="text-xs text-slate-400">Yeh heading aur signature labels PDF aur Word work order par print honge</p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsPreviewOpen(true)}
+              className="flex items-center space-x-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-xl transition"
+            >
+              <Eye className="w-4 h-4" />
+              <span>Live Preview</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs md:text-sm">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1.5">Document Heading / Title</label>
+              <input
+                type="text"
+                value={formData.docTitle}
+                onChange={e => setFormData({ ...formData, docTitle: e.target.value })}
+                placeholder="MERCHANDISER WORK ORDER"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1.5">
+                Document Status <span className="text-slate-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={formData.docStatus}
+                onChange={e => setFormData({ ...formData, docStatus: e.target.value })}
+                placeholder="e.g. APPROVED / DRAFT / PAID"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-rose-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+              />
+              <div className="flex items-center space-x-1.5 mt-1.5">
+                {['APPROVED', 'DRAFT', 'PAID', 'PARTIAL'].map(st => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, docStatus: st })}
+                    className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-medium transition"
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1.5">Footer — Left (Prepared By)</label>
+              <input
+                type="text"
+                value={formData.footerLeft}
+                onChange={e => setFormData({ ...formData, footerLeft: e.target.value })}
+                placeholder="Prepared by Merchandiser"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1.5">Footer — Right (Authorized By)</label>
+              <input
+                type="text"
+                value={formData.footerRight}
+                onChange={e => setFormData({ ...formData, footerRight: e.target.value })}
+                placeholder="Authorized Signature / Factory"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+              />
+            </div>
+          </div>
+
+          <p className="text-[11px] text-slate-400">
+            Tip: Heading ya Status khaali chhodne par document par print nahi hoga. Purane orders par default "MERCHANDISER WORK ORDER" dikhega.
+          </p>
+        </div>
+
         {/* Bottom Sticky Action Bar with Grand Totals */}
         <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 sticky bottom-4 z-30 border border-slate-800">
           
@@ -660,27 +771,40 @@ export default function CreateOrderPage({ onSave, onCancel, editingOrder }) {
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="px-5 py-2.5 rounded-xl border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-xs font-semibold transition"
-            >
-              Cancel
-            </button>
+          <div className="flex flex-col items-stretch md:items-end gap-1.5">
+            <div className="flex items-center space-x-3">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="px-5 py-2.5 rounded-xl border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-xs font-semibold transition"
+              >
+                Cancel
+              </button>
 
-            <button
-              type="submit"
-              className="flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-lg transition active:scale-95"
-            >
-              <Save className="w-4 h-4" />
-              <span>{editingOrder ? 'Update Order Record' : 'Save Full Order Record'}</span>
-            </button>
+              <button
+                type="submit"
+                className="flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-lg transition active:scale-95"
+              >
+                <Save className="w-4 h-4" />
+                <span>{editingOrder ? 'Update Order Record' : 'Save Full Order Record'}</span>
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-400 md:text-right">
+              Save ke baad Gate Pass, Packing List aur Invoice automatically tayyar ho jate hain.
+            </p>
           </div>
 
         </div>
 
       </form>
+
+      {isPreviewOpen && (
+        <WorkOrderPreview
+          order={{ ...formData, totalPieces, totalAmount, balance }}
+          company={company}
+          onClose={() => setIsPreviewOpen(false)}
+        />
+      )}
 
     </div>
   );

@@ -4,6 +4,7 @@
     "city": "Faisalabad",
     "country": "Pakistan",
     "phone": "+92 300 1234567",
+    "address": "Ayub Colony, Fsd, Nazamabad Street No 9, Center Mill Road",
     "currency": "£",
     "currencyCode": "GBP",
     "tagline": "Quality Apparel Manufacturing & Export"
@@ -64,7 +65,28 @@
       ],
       "advancePaid": 4032,
       "paymentMethod": "Bank Transfer",
-      "paymentRef": "Wasool Record"
+      "paymentRef": "Wasool Record",
+      "gatePassVehicle": "",
+      "gatePassDriver": "",
+      "gatePassDestination": "Faisalabad",
+      "gatePassRemarks": "",
+      "gatePassDate": "2026-10-17",
+      "packingListNo": "",
+      "packingDate": "",
+      "packingNetWeight": "",
+      "packingGrossWeight": "",
+      "packingCartonLength": "",
+      "packingCartonWidth": "",
+      "packingCartonHeight": "",
+      "packingNotes": "",
+      "invoiceNo": "",
+      "invoiceDate": "",
+      "invoiceTerms": "Payment due on receipt",
+      "invoiceBankDetails": "",
+      "invoiceNotes": "",
+      "packingCbm": "",
+      "gatePassNo": "GP-001",
+      "gatePassPurpose": "Dispatch of finished goods"
     },
     {
       "id": "ord-2",
@@ -437,6 +459,115 @@
       "advancePaid": 0,
       "paymentMethod": "Bank Transfer",
       "paymentRef": "Wasool Record"
+    },
+    {
+      "id": "ord-1795502490877",
+      "orderNumber": "ORDER #010",
+      "customer": "Shahid Sab",
+      "manufacturer": "Butt Collection",
+      "dispatchCity": "Faisalabad",
+      "orderDate": "2026-11-24",
+      "deadline": "2026-11-25",
+      "shippedOn": "",
+      "status": "In Progress",
+      "totalPieces": 990,
+      "totalAmount": 7672.5,
+      "amountReceived": 0,
+      "balance": 7672.5,
+      "notes": "",
+      "items": [
+        {
+          "style": "Alo 002 Set ",
+          "gsm": "280",
+          "color": "Black",
+          "sizeBreakdown": {
+            "xs": 40,
+            "s": 40,
+            "m": 40,
+            "l": 40,
+            "xl": 38
+          },
+          "cartons": 0,
+          "setsPerCarton": 0,
+          "qty": 198,
+          "rate": 7.75,
+          "amount": 1534.5
+        },
+        {
+          "style": "Alo 002 Set ",
+          "gsm": "280",
+          "color": "Gray",
+          "sizeBreakdown": {
+            "xs": 40,
+            "s": 40,
+            "m": 40,
+            "l": 40,
+            "xl": 38
+          },
+          "cartons": 0,
+          "setsPerCarton": 0,
+          "qty": 198,
+          "rate": 7.75,
+          "amount": 1534.5
+        },
+        {
+          "style": "Alo 002 Set ",
+          "gsm": "280",
+          "color": "Charcoal ",
+          "sizeBreakdown": {
+            "xs": 40,
+            "s": 40,
+            "m": 40,
+            "l": 40,
+            "xl": 38
+          },
+          "cartons": 0,
+          "setsPerCarton": 0,
+          "qty": 198,
+          "rate": 7.75,
+          "amount": 1534.5
+        },
+        {
+          "style": "Alo 002 Set ",
+          "gsm": "280",
+          "color": "Navy Blue",
+          "sizeBreakdown": {
+            "xs": 40,
+            "s": 40,
+            "m": 40,
+            "l": 40,
+            "xl": 38
+          },
+          "cartons": 0,
+          "setsPerCarton": 0,
+          "qty": 198,
+          "rate": 7.75,
+          "amount": 1534.5
+        },
+        {
+          "style": "Alo 002 Set ",
+          "gsm": "280",
+          "color": "Maroon  ",
+          "sizeBreakdown": {
+            "xs": 40,
+            "s": 40,
+            "m": 40,
+            "l": 40,
+            "xl": 38
+          },
+          "cartons": 0,
+          "setsPerCarton": 0,
+          "qty": 198,
+          "rate": 7.75,
+          "amount": 1534.5
+        }
+      ],
+      "advancePaid": 0,
+      "paymentMethod": "Bank Transfer",
+      "paymentRef": "Wasool Record",
+      "docTitle": "Butt Collection",
+      "footerLeft": "Prepared by Merchandiser",
+      "footerRight": "Authorized Signature / Factory"
     }
   ],
   "payments": [
@@ -505,8 +636,8 @@
       "cartonNo": "1 OF 32",
       "totalCartons": 32,
       "masterCartons": 32,
-      "setsPerCarton": 30,
-      "totalSets": 30,
+      "setsPerCarton": 70,
+      "totalSets": 70,
       "countryOfOrigin": "MADE IN PAKISTAN",
       "manufacturer": "BUTT COLLECTION FAISALABAD",
       "rows": [
@@ -527,6 +658,42 @@
           "l": 3,
           "xl": 3,
           "total": 15
+        },
+        {
+          "color": "Navy",
+          "xs": 2,
+          "s": 2,
+          "m": 2,
+          "l": 2,
+          "xl": 2,
+          "total": 10
+        },
+        {
+          "color": "Navy",
+          "xs": 2,
+          "s": 2,
+          "m": 2,
+          "l": 2,
+          "xl": 2,
+          "total": 10
+        },
+        {
+          "color": "Navy",
+          "xs": 2,
+          "s": 2,
+          "m": 2,
+          "l": 2,
+          "xl": 2,
+          "total": 10
+        },
+        {
+          "color": "Navy",
+          "xs": 2,
+          "s": 2,
+          "m": 2,
+          "l": 2,
+          "xl": 2,
+          "total": 10
         }
       ],
       "notes": "BOLD POSTER DESIGN - 30 SETS PER CARTON (SCREENSHOT DEFAULT)"

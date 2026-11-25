@@ -1,11 +1,12 @@
 import React from 'react';
-import { LayoutDashboard, ShoppingBag, FileSpreadsheet, Tag, Download, Clock, Database, PlusCircle } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, FileSpreadsheet, Tag, Download, Clock, Database, PlusCircle, FilePlus } from 'lucide-react';
 
 export default function Navbar({ activeTab, setActiveTab, company, stats, todayDate, database, onNewOrderClick }) {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard Overview', icon: LayoutDashboard },
     { id: 'orders', label: 'Orders & Production', icon: ShoppingBag, badge: stats?.inProgressOrders },
     { id: 'create-order', label: '+ New Order Entry', icon: PlusCircle, isHighlight: true },
+    { id: 'documents', label: '+ Create Gate Pass / Invoice / Packing', icon: FilePlus, isAmber: true },
     { id: 'ledger', label: 'Payment Ledger (Wasool/Bakaya)', icon: FileSpreadsheet },
     { id: 'labels', label: 'Carton Labels (Bold Poster)', icon: Tag },
     { id: 'exports', label: 'Exports Hub (Excel/PDF/Word)', icon: Download }
@@ -88,12 +89,14 @@ export default function Navbar({ activeTab, setActiveTab, company, stats, todayD
                 className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg font-medium text-xs sm:text-sm transition-all whitespace-nowrap ${
                   isActive
                     ? 'bg-blue-600 text-white shadow-sm'
+                    : tab.isAmber
+                    ? 'bg-amber-400/15 text-amber-300 hover:bg-amber-400 hover:text-slate-900 border border-amber-400/50'
                     : tab.isHighlight
                     ? 'bg-blue-600/20 text-blue-300 hover:bg-blue-600 hover:text-white border border-blue-500/40'
                     : 'text-slate-300 hover:text-white hover:bg-slate-800'
                 }`}
               >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-white' : tab.isHighlight ? 'text-blue-300' : 'text-slate-400'}`} />
+                <Icon className={`w-4 h-4 ${isActive ? 'text-white' : tab.isAmber ? 'text-amber-300' : tab.isHighlight ? 'text-blue-300' : 'text-slate-400'}`} />
                 <span>{tab.label}</span>
                 {tab.badge !== undefined && tab.badge > 0 && (
                   <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${

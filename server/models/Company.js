@@ -5,6 +5,7 @@ const CompanySchema = new mongoose.Schema({
   city: { type: String, default: 'Faisalabad' },
   country: { type: String, default: 'Pakistan' },
   phone: { type: String, default: '+92 300 1234567' },
+  address: { type: String, default: 'Ayub Colony, Fsd, Nazamabad Street No 9, Center Mill Road' },
   currency: { type: String, default: '£' },
   currencyCode: { type: String, default: 'GBP' },
   tagline: { type: String, default: 'Quality Apparel Manufacturing & Export' }

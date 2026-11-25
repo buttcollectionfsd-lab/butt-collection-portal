@@ -4,12 +4,20 @@ import DashboardTab from './components/DashboardTab';
 import OrdersTab from './components/OrdersTab';
 import CreateOrderPage from './components/CreateOrderPage';
 import OrderDetailsModal from './components/OrderDetailsModal';
+import GatePassModal from './components/GatePassModal';
+import PackingListModal from './components/PackingListModal';
+import InvoiceModal from './components/InvoiceModal';
+import CreateDocumentsModal from './components/CreateDocumentsModal';
 import PaymentLedgerTab from './components/PaymentLedgerTab';
 import PaymentModal from './components/PaymentModal';
 import CartonLabelTab from './components/CartonLabelTab';
 import ExportsTab from './components/ExportsTab';
+import OrderDocumentsTab from './components/OrderDocumentsTab';
 import ScriptWarning from './components/ScriptWarning';
 import { findArabicIssues } from './utils/arabicScript';
+import { getGatePassMeta } from './utils/gatePass';
+import { getPackingMeta } from './utils/packingList';
+import { getInvoiceMeta } from './utils/invoice';
 import { Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 const API_BASE = 'http://localhost:5000/api';
@@ -27,10 +35,14 @@ export default function App() {
   const [payments, setPayments] = useState([]);
   const [labels, setLabels] = useState([]);
   const [todayDate, setTodayDate] = useState('');
-
+ 
   // Modals & Active Selections
   const [editingOrder, setEditingOrder] = useState(null);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
+  const [gatePassOrder, setGatePassOrder] = useState(null);
+  const [packingListOrder, setPackingListOrder] = useState(null);
+  const [invoiceOrder, setInvoiceOrder] = useState(null);
+  const [documentCreateOrder, setDocumentCreateOrder] = useState(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
   // Notification Toast
@@ -43,6 +55,7 @@ export default function App() {
       setToast(null);
     }, 3500);
   };
+
 
   // Fetch all initial data (silent = no loading spinner on refresh)
   const loadData = async (silent = false) => {
@@ -94,6 +107,185 @@ export default function App() {
     setActiveTab('create-order');
   };
 
+  const handleOpenGatePass = (order) => {
+    setSelectedOrderDetails(null);
+    setGatePassOrder(order);
+  };
+
+  const handleOpenPackingList = (order) => {
+    setSelectedOrderDetails(null);
+    setPackingListOrder(order);
+  };
+
+  const handleOpenInvoice = (order) => {
+    setSelectedOrderDetails(null);
+    setInvoiceOrder(order);
+  };
+
+  const handleOpenCreateDocuments = (order) => {
+    setSelectedOrderDetails(null);
+    setDocumentCreateOrder(order);
+  };
+
+  const handleOpenDocument = (type, order) => {
+    if (type === 'gatePass') handleOpenGatePass(order);
+    else if (type === 'packingList') handleOpenPackingList(order);
+    else if (type === 'invoice') handleOpenInvoice(order);
+  };
+
+  const handleSaveGatePass = async (id, gatePassData) => {
+    const res = await fetch(`${API_BASE}/orders/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(gatePassData)
+    });
+
+    if (!res.ok) {
+      let message = 'Gate pass details could not be saved';
+      try {
+        const body = await res.json();
+        if (body?.error) message = body.error;
+      } catch (_) {
+        // keep default message
+      }
+      throw new Error(message);
+    }
+
+    const updated = await res.json();
+    setOrders(prev => prev.map(o => (o.id === id ? { ...o, ...gatePassData, ...updated } : o)));
+    setGatePassOrder(prev => (prev && prev.id === id ? { ...prev, ...gatePassData } : prev));
+    setSelectedOrderDetails(prev =>
+      prev && prev.id === id ? { ...prev, ...gatePassData } : prev
+    );
+    await loadData(true);
+    showToast('Gate pass details saved successfully!');
+    return updated;
+  };
+
+  const handleSavePackingList = async (id, packingData) => {
+    const res = await fetch(`${API_BASE}/orders/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(packingData)
+    });
+
+    if (!res.ok) {
+      let message = 'Packing list details could not be saved';
+      try {
+        const body = await res.json();
+        if (body?.error) message = body.error;
+      } catch (_) {
+        // keep default message
+      }
+      throw new Error(message);
+    }
+
+    const updated = await res.json();
+    setOrders(prev => prev.map(o => (o.id === id ? { ...o, ...packingData, ...updated } : o)));
+    setPackingListOrder(prev => (prev && prev.id === id ? { ...prev, ...packingData } : prev));
+    setSelectedOrderDetails(prev =>
+      prev && prev.id === id ? { ...prev, ...packingData } : prev
+    );
+    await loadData(true);
+    showToast('Packing list details saved successfully!');
+    return updated;
+  };
+
+  const handleSaveInvoice = async (id, invoiceData) => {
+    const res = await fetch(`${API_BASE}/orders/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(invoiceData)
+    });
+
+    if (!res.ok) {
+      let message = 'Invoice details could not be saved';
+      try {
+        const body = await res.json();
+        if (body?.error) message = body.error;
+      } catch (_) {
+        // keep default message
+      }
+      throw new Error(message);
+    }
+
+    const updated = await res.json();
+    setOrders(prev => prev.map(o => (o.id === id ? { ...o, ...invoiceData, ...updated } : o)));
+    setInvoiceOrder(prev => (prev && prev.id === id ? { ...prev, ...invoiceData } : prev));
+    setSelectedOrderDetails(prev =>
+      prev && prev.id === id ? { ...prev, ...invoiceData } : prev
+    );
+    await loadData(true);
+    showToast('Invoice details saved successfully!');
+    return updated;
+  };
+
+  const handleCreateDocument = async (type, order) => {
+    if (!order?.id) return;
+
+    let fields = {};
+    let label = 'Document';
+
+    if (type === 'gatePass') {
+      const meta = getGatePassMeta(order);
+      label = 'Gate Pass';
+      fields = {
+        gatePassNo: order.gatePassNo || meta.no,
+        gatePassDate: order.gatePassDate || meta.date,
+        gatePassDestination: order.gatePassDestination || meta.destination,
+        gatePassPurpose: order.gatePassPurpose || meta.purpose
+      };
+    } else if (type === 'packingList') {
+      const meta = getPackingMeta(order);
+      label = 'Packing List';
+      fields = {
+        packingListNo: order.packingListNo || meta.no,
+        packingDate: order.packingDate || meta.date
+      };
+    } else if (type === 'invoice') {
+      const meta = getInvoiceMeta(order);
+      label = 'Invoice';
+      fields = {
+        invoiceNo: order.invoiceNo || meta.no,
+        invoiceDate: order.invoiceDate || meta.date,
+        invoiceTerms: order.invoiceTerms || meta.terms
+      };
+    } else {
+      return;
+    }
+
+    const res = await fetch(`${API_BASE}/orders/${order.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields)
+    });
+
+    if (!res.ok) {
+      let message = `${label} create nahi ho saka`;
+      try {
+        const body = await res.json();
+        if (body?.error) message = body.error;
+      } catch (_) {
+        // keep default message
+      }
+      throw new Error(message);
+    }
+
+    const updated = await res.json();
+    const merged = { ...order, ...fields, ...updated };
+
+    setOrders(prev => prev.map(o => (o.id === order.id ? merged : o)));
+    setDocumentCreateOrder(null);
+    setSelectedOrderDetails(null);
+
+    if (type === 'gatePass') setGatePassOrder(merged);
+    if (type === 'packingList') setPackingListOrder(merged);
+    if (type === 'invoice') setInvoiceOrder(merged);
+
+    showToast(`${label} created — ab details edit karke PDF/Word nikalein`);
+    return merged;
+  };
+
   const handleSaveOrder = async (orderData) => {
     try {
       const isEdit = Boolean(orderData.id);
@@ -134,7 +326,12 @@ export default function App() {
       await loadData(true); // silent refresh
       setEditingOrder(null);
       setActiveTab('orders');
-      showToast(isEdit ? 'Order updated successfully!' : 'New order created successfully!');
+      if (!isEdit) {
+        setDocumentCreateOrder(savedOrder);
+        showToast('Order created — ab Gate Pass, Packing List & Invoice create karein');
+      } else {
+        showToast('Order updated successfully!');
+      }
     } catch (err) {
       alert(err.message);
     }
@@ -323,9 +520,15 @@ export default function App() {
             {activeTab === 'orders' && (
               <OrdersTab
                 orders={orders}
+                payments={payments}
+                company={company}
                 openNewOrderModal={handleOpenNewOrderPage}
                 openEditOrderModal={handleOpenEditOrderPage}
                 openOrderDetails={(order) => setSelectedOrderDetails(order)}
+                openGatePass={handleOpenGatePass}
+                openPackingList={handleOpenPackingList}
+                openInvoice={handleOpenInvoice}
+                openCreateDocuments={handleOpenCreateDocuments}
                 deleteOrder={handleDeleteOrder}
                 updateOrderStatus={handleUpdateOrderStatus}
               />
@@ -340,6 +543,7 @@ export default function App() {
                   setActiveTab('orders');
                 }}
                 editingOrder={editingOrder}
+                company={company}
               />
             )}
 
@@ -362,11 +566,27 @@ export default function App() {
               />
             )}
 
-            {/* 6. Document Exports Hub */}
+            {/* 6. Create Gate Pass / Packing List / Invoice */}
+            {activeTab === 'documents' && (
+              <OrderDocumentsTab
+                orders={orders}
+                company={company}
+                onCreate={handleCreateDocument}
+                onOpen={handleOpenDocument}
+              />
+            )}
+
+            {/* 7. Document Exports Hub */}
             {activeTab === 'exports' && (
               <ExportsTab
                 orders={orders}
                 labels={labels}
+                payments={payments}
+                company={company}
+                openGatePass={handleOpenGatePass}
+                openPackingList={handleOpenPackingList}
+                openInvoice={handleOpenInvoice}
+                openCreateDocuments={handleOpenCreateDocuments}
               />
             )}
           </>
@@ -379,8 +599,48 @@ export default function App() {
         isOpen={Boolean(selectedOrderDetails)}
         onClose={() => setSelectedOrderDetails(null)}
         order={selectedOrderDetails}
+        company={company}
         onStatusChange={handleUpdateOrderStatus}
         onEdit={handleOpenEditOrderPage}
+        onGatePass={handleOpenGatePass}
+        onPackingList={handleOpenPackingList}
+        onInvoice={handleOpenInvoice}
+        onCreateDocuments={handleOpenCreateDocuments}
+      />
+
+      {/* Create / manage order documents */}
+      <CreateDocumentsModal
+        key={documentCreateOrder?.id || 'create-documents'}
+        order={documentCreateOrder}
+        onSelect={handleCreateDocument}
+        onClose={() => setDocumentCreateOrder(null)}
+      />
+
+      {/* Dispatch Gate Pass Editor & Preview */}
+      <GatePassModal
+        key={gatePassOrder?.id || 'gate-pass'}
+        order={gatePassOrder}
+        company={company}
+        onSave={handleSaveGatePass}
+        onClose={() => setGatePassOrder(null)}
+      />
+
+      {/* Packing List Editor & Preview */}
+      <PackingListModal
+        key={packingListOrder?.id || 'packing-list'}
+        order={packingListOrder}
+        company={company}
+        onSave={handleSavePackingList}
+        onClose={() => setPackingListOrder(null)}
+      />
+
+      {/* Commercial Invoice Editor & Preview */}
+      <InvoiceModal
+        key={invoiceOrder?.id || 'invoice'}
+        order={invoiceOrder}
+        company={company}
+        onSave={handleSaveInvoice}
+        onClose={() => setInvoiceOrder(null)}
       />
 
       {/* Record Wasool Modal */}

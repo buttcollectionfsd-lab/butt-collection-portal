@@ -10,7 +10,8 @@ import {
   FileSpreadsheet, 
   ArrowUpRight,
   ChevronRight,
-  Tag
+  Tag,
+  FilePlus
 } from 'lucide-react';
 
 export default function DashboardTab({ 
@@ -56,6 +57,14 @@ export default function DashboardTab({
           >
             <PoundSterling className="w-4 h-4" />
             <span>Record Wasool</span>
+          </button>
+
+          <button 
+            onClick={() => setActiveTab('documents')}
+            className="flex items-center space-x-2 bg-amber-400 hover:bg-amber-300 text-slate-900 px-4 py-2.5 rounded-xl font-bold text-sm transition shadow-sm active:scale-95"
+          >
+            <FilePlus className="w-4 h-4" />
+            <span>Create Gate Pass / Invoice / Packing</span>
           </button>
 
           <a 

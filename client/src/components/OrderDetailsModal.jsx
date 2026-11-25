@@ -1,7 +1,10 @@
-import React from 'react';
-import { X, FileText, Download, CheckCircle2, Clock, Truck, Building2, Calendar, PoundSterling, Edit3 } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, FileText, Download, CheckCircle2, Clock, Truck, Building2, Calendar, PoundSterling, Edit3, Eye, Package, Receipt, FilePlus } from 'lucide-react';
+import DocumentViewerModal from './DocumentViewerModal';
 
-export default function OrderDetailsModal({ isOpen, onClose, order, onStatusChange, onEdit }) {
+export default function OrderDetailsModal({ isOpen, onClose, order, company, onStatusChange, onEdit, onGatePass, onPackingList, onInvoice, onCreateDocuments }) {
+  const [showViewer, setShowViewer] = useState(false);
+
   if (!isOpen || !order) return null;
 
   return (
@@ -27,6 +30,48 @@ export default function OrderDetailsModal({ isOpen, onClose, order, onStatusChan
           </div>
 
           <div className="flex items-center space-x-2">
+            {/* Gate Pass */}
+            {onGatePass && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onGatePass(order);
+                }}
+                className="flex items-center space-x-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold transition shadow-sm"
+              >
+                <Truck className="w-3.5 h-3.5" />
+                <span>Gate Pass</span>
+              </button>
+            )}
+
+            {/* Packing List */}
+            {onPackingList && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onPackingList(order);
+                }}
+                title="Packing List (view, edit & print)"
+                className="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition shadow-sm"
+              >
+                <Package className="w-4 h-4" />
+              </button>
+            )}
+
+            {/* Commercial Invoice */}
+            {onInvoice && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onInvoice(order);
+                }}
+                title="Commercial Invoice (view, edit & print)"
+                className="p-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition shadow-sm"
+              >
+                <Receipt className="w-4 h-4" />
+              </button>
+            )}
+
             {/* Edit Button in Header */}
             {onEdit && (
               <button
@@ -172,13 +217,13 @@ export default function OrderDetailsModal({ isOpen, onClose, order, onStatusChan
                 </p>
               </div>
               <div className="bg-white p-3 rounded-lg border border-emerald-200">
-                <span className="text-[11px] text-emerald-700 font-medium">Wasool (Received)</span>
+                <span className="text-[11px] text-emerald-700 font-medium">Received</span>
                 <p className="font-mono font-bold text-emerald-600 text-sm mt-0.5">
                   £{Number(order.amountReceived || 0).toLocaleString('en-GB', { minimumFractionDigits: 2 })}
                 </p>
               </div>
               <div className="bg-white p-3 rounded-lg border border-rose-200">
-                <span className="text-[11px] text-rose-700 font-medium">Bakaya (Balance Due)</span>
+                <span className="text-[11px] text-rose-700 font-medium">Balance Due</span>
                 <p className="font-mono font-bold text-rose-600 text-sm mt-0.5">
                   £{Number(order.balance || 0).toLocaleString('en-GB', { minimumFractionDigits: 2 })}
                 </p>
@@ -221,10 +266,33 @@ export default function OrderDetailsModal({ isOpen, onClose, order, onStatusChan
                 <span>Edit Full Order</span>
               </button>
             )}
+
+            {onCreateDocuments && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onCreateDocuments(order);
+                }}
+                className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition shadow-sm"
+              >
+                <FilePlus className="w-3.5 h-3.5" />
+                <span>Create Documents</span>
+              </button>
+            )}
           </div>
 
           <div className="flex items-center space-x-2">
             
+            {/* In-app viewer: work order + PDF, no download */}
+            <button
+              type="button"
+              onClick={() => setShowViewer(true)}
+              className="flex items-center space-x-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 text-indigo-800 rounded-lg text-xs font-bold transition"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>View</span>
+            </button>
+
             {/* Word .docx Export */}
             <a
               href={`http://localhost:5000/api/export/docx/order/${order.id}`}
@@ -256,6 +324,17 @@ export default function OrderDetailsModal({ isOpen, onClose, order, onStatusChan
         </div>
 
       </div>
+
+      {showViewer && (
+        <DocumentViewerModal
+          key={order.id}
+          title="Order Documents"
+          order={order}
+          company={company}
+          initialTab="work-order"
+          onClose={() => setShowViewer(false)}
+        />
+      )}
     </div>
   );
 }

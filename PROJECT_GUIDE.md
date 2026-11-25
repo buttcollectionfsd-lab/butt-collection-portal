@@ -33,6 +33,7 @@ Yeh koi public/e-commerce app nahi hai — single-company internal tool hai, bin
 | DB fallback | Local JSON file (`data.json`) | — |
 | Excel export | ExcelJS | 4.4.0 |
 | PDF export | PDFKit | 0.16.0 |
+| Client PDF print | pdfjs-dist (lazy-loaded) | 6.5.438 |
 | Word export | docx | 9.1.1 |
 | Env config | dotenv | 18.0.10 |
 | CORS | cors | 2.8.5 |
@@ -141,7 +142,7 @@ butt-collection-portal/
         │   ├── PaymentLedgerTab.jsx
         │   ├── PaymentModal.jsx
         │   ├── CartonLabelTab.jsx
-        │   ├── OrderDocumentsTab.jsx     # Dedicated Gate Pass / Packing List / Invoice create page
+        │   ├── OrderDocumentsTab.jsx     # Dedicated Gate Pass / Packing List / Invoice create page (+ standalone docs)
         │   ├── ExportsTab.jsx
         │   ├── GatePassModal.jsx         # Gate pass editor + live preview + PDF
         │   ├── GatePassDocument.jsx      # Gate pass A4 paper markup
@@ -151,6 +152,8 @@ butt-collection-portal/
         │   ├── InvoiceDocument.jsx       # Invoice A4 paper markup
         │   ├── CreateDocumentsModal.jsx  # Create/open gate pass, packing list & invoice
         │   ├── DocumentEditorModal.jsx   # Shared editor/preview shell for order documents
+        │   ├── DocumentItemsEditor.jsx   # Items editor used by standalone packing list / invoice
+        │   ├── PrintCenterModal.jsx      # Saved doc / computer file print karo (layout + copies)
         │   ├── ScriptWarning.jsx
         │   └── OrderModal.jsx          # ⚠️ LEGACY — kahin import nahi hota
         └── utils/
@@ -159,6 +162,7 @@ butt-collection-portal/
             ├── gatePass.js     # Client mirror of gate pass meta/totals
             ├── packingList.js  # Client mirror of packing groups/totals
             ├── invoice.js      # Client mirror of invoice meta
+            ├── printPdf.js     # PDF/Image ko browser print dialog se print karta hai (pdf.js)
             └── orderNumber.js
 ```
 
@@ -245,11 +249,13 @@ Base: `http://localhost:5000/api`
 |---|---|---|
 | GET | `/health` | Status + `database` mode + `mongoConnected` |
 | GET | `/dashboard` | Company, stats, annotated orders, `recentPayments`, today date |
-| GET | `/orders` | Orders list; query: `status`, `customer`, `search` |
-| GET | `/orders/:id` | Single order |
+| GET | `/orders` | Orders list; query: `status`, `customer`, `search` (standalone documents `/orders` list mein nahi aate) |
+| GET | `/orders/:id` | Single order (standalone document bhi id se milega) |
 | POST | `/orders` | Naya order; totals server par recalculate hote hain |
 | PUT | `/orders/:id` | Partial update; items aayein to totals + balance recalc |
-| DELETE | `/orders/:id` | Order delete (payments delete nahi hote) |
+| DELETE | `/orders/:id` | Order / standalone document delete (payments delete nahi hote) |
+| GET | `/standalone-documents` | Bina order ke banaye gaye documents; query: `?type=gatePass\|packingList\|invoice` |
+| POST | `/standalone-documents` | Naya standalone document `{ type, customer?, reference?, date? }`; `isStandalone: true`, auto `GP-###/PL-###/INV-###`, customer default `Walk-in Customer`, orderNumber default `MANUAL-###`, `date` (YYYY-MM-DD) optional — na dein to today |
 | GET | `/payments` | Saari payments (date desc) |
 | POST | `/payments` | Naya Wasool; linked order ka `amountReceived`/`balance` update |
 | DELETE | `/payments/:id` | Payment delete; linked order se amount minus + balance recalc |
@@ -261,9 +267,9 @@ Base: `http://localhost:5000/api`
 | GET | `/export/excel` | Full tracker workbook `.xlsx` |
 | GET | `/export/pdf/order/:id` | Work order PDF |
 | GET | `/export/pdf/label/:id?template=` | Carton label PDF (4 templates) |
-| GET | `/export/pdf/gate-pass/:id` | Dispatch gate pass PDF (`?inline=1` for iframe) |
+| GET | `/export/pdf/gate-pass/:id` | Dispatch gate pass PDF (`?inline=1` iframe; `?layout=form` portrait form, `?layout=landscape-2up` A4 landscape with 2 copies) |
 | GET | `/export/pdf/packing-list/:id` | Packing list PDF (`?inline=1` for iframe) |
-| GET | `/export/pdf/invoice/:id` | Commercial invoice PDF (`?inline=1` for iframe) |
+| GET | `/export/pdf/invoice/:id` | Commercial invoice PDF (`?inline=1` for iframe; `?layout=landscape-2up` A4 landscape with 2 copies) |
 | GET | `/export/docx/order/:id` | Work order Word document |
 | GET | `/export/docx/gate-pass/:id` | Gate pass Word document |
 | GET | `/export/docx/packing-list/:id` | Packing list Word document |
@@ -324,7 +330,16 @@ Client order create karne ke baad, agar `advancePaid > 0` hai, to alag se `POST 
 
 Order delete karne par uske payments **orphan** reh jate hain (delete nahi hote).
 
-### 6.10 Export services
+### 6.10 Standalone documents (bina order ke)
+
+Orders store hi documents ka single source hai; standalone records `isStandalone: true` + `standaloneType` (`gatePass` / `packingList` / `invoice`) ke saath usi collection mein rehte hain, lekin `getAllOrders()` default inhe filter kar deta hai. Is liye `/orders` list, dashboard stats aur Excel tracker par inka koi asar nahi hota.
+
+- `GET /standalone-documents` — sirf standalone docs (newest first, optional `?type=`)
+- `POST /standalone-documents` — `{ type, customer?, reference?, date? }`; customer default `Walk-in Customer`, `orderNumber` default `MANUAL-###`; per-type number `GP-###` / `PL-###` / `INV-###` (max existing + 1), `date` (YYYY-MM-DD) optional — na dein to today; wahi date `orderDate` + `gatePassDate` / `packingDate` / `invoiceDate` mein set hoti hai
+- PDF/DOCX export routes `findAnyOrder()` use karte hain, is liye standalone documents bhi same export endpoints se nikalte hain
+- Frontend: `App.jsx` `standaloneDocs` state + `handleCreateStandalone` / `handleDeleteStandalone`; `OrderDocumentsTab` ka top section ("ALAG DOCUMENT — ORDER KE BAGHAIR") party/reference/date inputs + teen Create buttons + saved docs list (Open/Delete). Date input woh din set karta hai jis din document use hoga (blank/today default). Har document editor mein bhi date field editable hai (`gatePassDate` / `packingDate` / `invoiceDate`) — save karne par preview, PDF aur Word sab new date dikhate hain. Standalone Packing List / Invoice modals `DocumentItemsEditor` se items add karne dete hain; invoice `invoiceReceived` field se received amount set hota hai.
+
+### 6.11 Export services
 
 **`excelService.js` — `generateFullTrackerWorkbook(orders, payments, company)`**
 3 sheets, styled headers/cards/borders, GBP number formats:
@@ -339,19 +354,22 @@ Order delete karne par uske payments **orphan** reh jate hain (delete nahi hote)
   - `classic_box` — description + top-right CTN# box + bottom full-width total
   - `minimal_clean` — rounded border, ruled lines
   - `top_ctn` — top CTN# box, buyer/sets dual box, table, bottom total
-- `generateGatePassPdfBuffer(order, company)` — blue header with editable company name/tagline/address + document title, editable generated date, 8-field gate pass meta (GP#, date, customer, order#, vehicle, driver, destination, purpose), dispatch items table (editable rows, multi-page), totals/remarks box, 4 editable signature labels, editable footer note.
+- `generateGatePassPdfBuffer(order, company)` — legacy blue-header gate pass (kept as fallback).
+- `generateGatePassFormPdfBuffer(order, company, { copies, blank })` — factory stationery form: company header + GATE PASS box (OUTWARD/RETURNABLE checkboxes, SR. NO.), underlined Party/Date/Through/Vehicle/Driver fields, 12-row SR · DESCRIPTION · UNIT · QUANTITY · REMARKS table with Total row, dispatch reference strip, 3 signature lines. `copies: 1` → A4 portrait; `copies: 2` → A4 landscape sheet with two identical copies side by side + dashed cut guide. 12 se zyada items hon to har page 12 rows ke saath continuation sheet banti hai (2-up mein har sheet par do copies). `blank: true` → empty form for handwriting.
 - `generatePackingListPdfBuffer(order, company)` — 8-field meta, colour/size breakdown table, carton details (range, description, pcs/carton, cartons, pcs), weight & volume box (net/gross/CBM), notes, 2 signatures.
-- `generateInvoicePdfBuffer(order, company)` — invoice meta + payment status badge, bill-to box, items table, totals, three financial cards (subtotal/received/balance), notes & bank details, signature.
+- `generateInvoicePdfBuffer(order, company, { copies })` — invoice meta + payment status badge, bill-to box, items table, totals, three financial cards (subtotal/received/balance), notes & bank details, signature. `copies: 2` → A4 landscape sheet with two scaled copies side by side + dashed cut guide (12 line items tak; zyada items par single-copy pages).
 
 **`docxService.js`** — editable Word documents:
 - `generateOrderDocx(order, company)` — company header, meta table, items table (with total row), ledger section, signature block. `docTitle`, `docStatus`, `footerLeft`, `footerRight` bhi print hote hain.
-- `generateGatePassDocx(order, company)` — same editable header/meta/items/signatures/footer note as the PDF.
+- `generateGatePassDocx(order, company)` — same gate-pass form structure in Word: header block + GATE PASS box, underlined party/transport fields, 12-row table, reference strip, 3 signature lines, footer note.
 - `generatePackingListDocx(order, company)` — size breakdown, carton details, weight table with blanks when values are empty, notes, 2 signatures.
 - `generateInvoiceDocx(order, company)` — meta table, items, totals table, notes/bank table, signature.
 
 All order documents share the company address fallback (`server/utils/companyInfo.js` → client `utils/company.js`): **Ayub Colony, Fsd, Nazamabad Street No 9, Center Mill Road** (factory / office).
 
-**Gate pass editability:** gate pass ke har visible element ke overrides order par save hote hain — `gatePassTitle`, `gatePassGeneratedOn`, `gatePassCompanyName/Tagline/Address`, `gatePassCustomer`, `gatePassOrderNo`, `gatePassPreparedBy/GateKeeper/ReceivedBy/AuthorizedBy`, `gatePassFooterNote`, aur `gatePassItems[]` (style, GSM, color, cartons, qty, remarks). Empty override ka matlab fallback (company profile / order items). Shared logic `server/utils/gatePass.js` + client `utils/gatePass.js`; PDF/Word/preview teeno same values use karte hain.
+**Gate pass editability:** gate pass ke har visible element ke overrides order par save hote hain — `gatePassTitle`, `gatePassGeneratedOn`, `gatePassCompanyName/Tagline/Address`, `gatePassCustomer`, `gatePassOrderNo`, `gatePassPreparedBy/AuthorizedBy/ReceivedBy`, `gatePassFooterNote`, aur `gatePassItems[]` (style, GSM, color, cartons, qty, remarks). `gatePassThrough` + `gatePassDriverCell` blank-form ke Through Mr. / Driver Cell No. fields bharte hain. Wording detail `gatePassVehicle`, `gatePassDriver`, `gatePassDestination`, `gatePassPurpose`, `gatePassRemarks` reference strip mein print hoti hai. Empty override ka matlab fallback (company profile / order items). Shared logic `server/utils/gatePass.js` + client `utils/gatePass.js`; PDF/Word/preview teeno same values use karte hain.
+
+**Gate pass print layouts:** `GatePassModal` mein **Print Layout** toggle — `1 per page` (A4 portrait) ya `2 per page` (A4 landscape, do copies ek paper par, beech mein dashed cut guide). Toggle PDF + inline preview URL dono ko `?layout=form` / `?layout=landscape-2up` bhejta hai; in-app paper preview bhi do copies dikhata hai. Wohi **Print Layout** toggle ab `InvoiceModal` mein bhi hai (invoice do chhoti copies ek landscape page par, 12 items tak).
 
 **Derived numbers:** gate pass `GP-###`, packing list `PL-###`, invoice `INV-###`, where `###` comes from the order number digits. Inline PDFs use `Content-Disposition: inline`, downloads use `attachment`.
 
@@ -383,6 +401,8 @@ All order documents share the company address fallback (`server/utils/companyInf
 
 **Create Documents flow:** naya order save hone par `handleSaveOrder` `setDocumentCreateOrder(savedOrder)` karta hai, jisse `CreateDocumentsModal` khulta hai (Gate Pass / Packing List / Invoice). `handleCreateDocument(type, order)` pehle default number + date + terms `PUT /orders/:id` se save karta hai (taake document "created" ban jaye), phir wahi document editor khol deta hai. Entry points: Navbar ka **Gate Pass / Invoice / Packing** tab (`OrderDocumentsTab`), Dashboard banner ka amber shortcut, Orders table ke **Create Docs** button, Order Details ke **Create Documents** button, aur Exports Hub ka order selector.
 
+**Standalone documents flow:** `OrderDocumentsTab` ke top section se party/reference/date dekar seedha `POST /standalone-documents` hota hai (koi order select karne ki zaroorat nahi), phir wahi document editor khulta hai. Date woh din hoti hai jis din gate pass/document use hoga. Standalone docs `standaloneDocs` state mein aate hain aur usi section se Open/Delete hote hain; orders/dashboard/Excel se bahar rehte hain. Order-linked documents ki date bhi editor ke date field se badli ja sakti hai — save hone par PDF/Word dono update ho jate hain.
+
 Yeh bhi karta hai: saved records mein `findArabicIssues(orders/payments/labels)` scan karke top par cleanup banner dikhana.
 
 ### 7.2 Components
@@ -397,12 +417,14 @@ Yeh bhi karta hai: saved records mein `findArabicIssues(orders/payments/labels)`
 | `PaymentLedgerTab` | Tab | 3 summary cards, search, payments table, delete. **Edit nahi hai** |
 | `PaymentModal` | Modal | Optional order select (auto-fill customer/notes), amount, date, method, reference, notes, Urdu guard |
 | `CartonLabelTab` | Tab | 4 template cards, label customizer (buyer/style/carton#, color-size rows), live preview, print, PDF export, save label, ALOO7/ALOO9 presets |
-| `OrderDocumentsTab` | Tab | Dedicated create page: order selector + summary, three large cards (Gate Pass / Packing List / Commercial Invoice) with Created/Not created status, number/date, **Create** ya **Open** button |
+| `OrderDocumentsTab` | Tab | Do hisse: **Alag Document** (bina order ke — party/reference/date inputs + 3 Create buttons + saved standalone docs Open/Delete) aur **order-linked** section (order selector + summary, three large cards with Created/Not created status, number/date, **Create** ya **Open** button) |
 | `ExportsTab` | Tab | 3 cards: Excel tracker, Word order (order select), PDF label/order + View buttons; top par **Create / Manage Order Documents** order selector; Gate Pass / Packing List / Invoice blocks with View, PDF and Word |
 | `CreateDocumentsModal` | Modal | Teen document cards (number + date + Created/New status), Create/Open buttons; create karte hi editor + PDF/Word khul jata hai |
-| `DocumentEditorModal` | Modal shell | Shared left editor + right Document/PDF tabs, dirty-state pill, save + PDF/Word/new-tab actions |
-| `GatePassModal` / `PackingListModal` / `InvoiceModal` | Modal wrappers | Field definitions + defaults + paper preview wired into `DocumentEditorModal`; Gate Pass additionally has grouped header/details/signature sections and a full dispatch-items editor (add/remove/reset rows) |
-| `GatePassDocument` / `PackingListDocument` / `InvoiceDocument` | Shared | A4 paper markup mirroring the PDF output with the factory address; gate pass uses all editable overrides (header, customer/order #, items, signatures, footer) |
+| `DocumentEditorModal` | Modal shell | Shared left editor + right Document/PDF tabs, dirty-state pill, optional `pdfQuery` + layout toggle, save + **Print (full settings)** + PDF/Word/new-tab actions |
+| `PrintCenterModal` | Modal | Saved document ya computer file choose karke print: doc type, layout (1/2 per page), copies; browser print dialog paper/orientation/margins/scale ke liye |
+| `DocumentItemsEditor` | Shared editor | Standalone packing list / invoice ke liye items rows (style, GSM, color, qty, cartons/rate, computed amount) add/remove |
+| `GatePassModal` / `PackingListModal` / `InvoiceModal` | Modal wrappers | Field definitions + defaults + paper preview wired into `DocumentEditorModal`; Gate Pass additionally has grouped header/details/signature sections and a full dispatch-items editor (add/remove/reset rows); Gate Pass aur Invoice dono mein **Print Layout** toggle (1 per page / 2 per landscape page), invoice ka 2-up preview bhi do copies dikhata hai |
+| `GatePassDocument` / `PackingListDocument` / `InvoiceDocument` | Shared | A4 paper markup mirroring the PDF output with the factory address; gate pass matches the factory's pre-printed stationery form (GATE PASS box, underlined transport fields, 12-row table, 3 signatures) and uses all editable overrides |
 | `WorkOrderDocument` | Shared | A4 work-order paper markup (docTitle/docStatus/footer/financials) — form preview + viewer dono use karte hain |
 | `WorkOrderPreview` | Modal | Live form preview overlay |
 | `DocumentViewerModal` | Modal | Tabs: Work Order / PDF (inline iframe) / Excel (HTML sheet preview), plus download shortcuts |
@@ -427,7 +449,14 @@ Yeh bhi karta hai: saved records mein `findArabicIssues(orders/payments/labels)`
 - Style title ke saath `SET` auto-append hota hai (e.g. `ALOO7` → `ALOO7 SET`)
 - Export PDF URL: `/api/export/pdf/label/:id?template=<activeTemplate>`
 
-### 7.5 Frontend API calls — sab `localhost:5000` par
+### 7.5 Printing (Print Center + modal Print)
+
+- `utils/printPdf.js` PDF ko pdf.js se (lazy-loaded chunk, `intent: 'print'` — background tab mein bhi atakta nahi) images mein render karta hai, phir ek hidden iframe (210×297mm, off-screen) mein print-ready HTML likh kar `iframe.contentWindow.print()` chalata hai. Print dialog mein user paper size, orientation, margins, scale aur printer copies set karta hai; in-app `copies` PDF pages ko repeat karta hai.
+- Computer ki file: PDF → same pipeline; image → direct print; Word support nahi (pehle PDF mein save karein).
+- `OrderDocumentsTab` ka **Print Center** saved order/standalone document ya computer file print karta hai; har document modal ka **Print (full settings)** button current layout ke saath seedha print dialog kholta hai.
+- Koi popup/window nahi khulta (pehle naya print window render se pehle focus le leta tha jis se pdf.js rendering ruk jati thi — ab render foreground tab mein hota hai, phir iframe print karta hai).
+
+### 7.6 Frontend API calls — sab `localhost:5000` par
 
 `App.jsx`, `OrdersTab.jsx`, `OrderDetailsModal.jsx`, `DashboardTab.jsx`, `ExportsTab.jsx`, `CartonLabelTab.jsx` mein direct `http://localhost:5000/...` URLs hain. `vite.config.js` mein `/api` → `:5000` proxy bhi configured hai, lekin code mostly use nahi karta. Deploy karne ke liye in URLs ko env-based banana padega.
 

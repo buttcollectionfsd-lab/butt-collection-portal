@@ -41,6 +41,8 @@ const OrderSchema = new mongoose.Schema({
     enum: ['In Progress', 'Shipped'],
     default: 'In Progress'
   },
+  isStandalone: { type: Boolean, default: false },
+  standaloneType: { type: String, default: '' },
   totalPieces: { type: Number, default: 0 },
   totalAmount: { type: Number, default: 0 },
   amountReceived: { type: Number, default: 0 },
@@ -54,6 +56,8 @@ const OrderSchema = new mongoose.Schema({
   gatePassDate: { type: String, default: '' },
   gatePassVehicle: { type: String, default: '' },
   gatePassDriver: { type: String, default: '' },
+  gatePassDriverCell: { type: String, default: '' },
+  gatePassThrough: { type: String, default: '' },
   gatePassDestination: { type: String, default: '' },
   gatePassPurpose: { type: String, default: 'Dispatch of finished goods' },
   gatePassRemarks: { type: String, default: '' },
@@ -84,6 +88,7 @@ const OrderSchema = new mongoose.Schema({
   invoiceTerms: { type: String, default: 'Payment due on receipt' },
   invoiceBankDetails: { type: String, default: '' },
   invoiceNotes: { type: String, default: '' },
+  invoiceReceived: { type: Number, default: null },
   items: [OrderItemSchema]
 }, {
   timestamps: true,

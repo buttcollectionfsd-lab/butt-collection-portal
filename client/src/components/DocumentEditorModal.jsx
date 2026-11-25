@@ -7,8 +7,10 @@ import {
   FileText,
   Eye,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  Printer
 } from 'lucide-react';
+import { printPdf } from '../utils/printPdf';
 
 const API_BASE = 'http://localhost:5000/api';
 
@@ -27,6 +29,10 @@ export default function DocumentEditorModal({
   Preview,
   pdfEndpoint,
   docxEndpoint,
+  pdfQuery,
+  pdfLayout,
+  pdfLayoutOptions,
+  onPdfLayoutChange,
   helpText,
   summaryText,
   renderExtra,
@@ -38,6 +44,7 @@ export default function DocumentEditorModal({
   const [saving, setSaving] = useState(false);
   const [view, setView] = useState('document');
   const [pdfVersion, setPdfVersion] = useState(0);
+  const [printing, setPrinting] = useState(false);
 
   useEffect(() => {
     setForm(buildDefaults(order, company));
@@ -50,8 +57,8 @@ export default function DocumentEditorModal({
 
   if (!order) return null;
 
-  const pdfUrl = `${API_BASE}${pdfEndpoint}/${order.id}`;
-  const inlinePdfUrl = `${pdfUrl}?inline=1&v=${pdfVersion}`;
+  const pdfUrl = `${API_BASE}${pdfEndpoint}/${order.id}${pdfQuery ? `?${pdfQuery}` : ''}`;
+  const inlinePdfUrl = `${pdfUrl}${pdfQuery ? '&' : '?'}inline=1&v=${pdfVersion}`;
   const docxUrl = `${API_BASE}${docxEndpoint}/${order.id}`;
 
   const update = (key, value) => {
@@ -70,6 +77,17 @@ export default function DocumentEditorModal({
       alert(err.message || 'Document details save nahi ho sake');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePrint = async () => {
+    try {
+      setPrinting(true);
+      await printPdf(pdfUrl, { title: `${title} • ${order.orderNumber}` });
+    } catch (err) {
+      alert(err.message || 'Print nahi ho saka');
+    } finally {
+      setPrinting(false);
     }
   };
 
@@ -136,6 +154,11 @@ export default function DocumentEditorModal({
                           className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
                         />
                       )}
+                      {field.hint && (
+                        <span className="mt-1 block text-[10px] font-semibold text-blue-700">
+                          {field.hint}
+                        </span>
+                      )}
                     </label>
                   </React.Fragment>
                 );
@@ -153,6 +176,50 @@ export default function DocumentEditorModal({
             </div>
 
             <div className="mt-4 space-y-2">
+              {pdfLayoutOptions?.length > 0 && onPdfLayoutChange && (
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-1">
+                    Print Layout
+                  </p>
+                  <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 border border-slate-300 rounded-xl">
+                    {pdfLayoutOptions.map(option => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => onPdfLayoutChange(option.value)}
+                        className={`px-2 py-1.5 rounded-lg text-[10px] font-extrabold transition ${
+                          pdfLayout === option.value
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:bg-white'
+                        }`}
+                        title={option.hint || option.label}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  {pdfLayout === 'landscape-2up' && (
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      PDF: landscape A4 par ek hi paper par do copies (left + right, beech mein cut guide). Word single portrait rehta hai.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handlePrint}
+                disabled={printing}
+                className="w-full flex items-center justify-center space-x-1.5 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white rounded-xl text-xs font-extrabold transition shadow-sm"
+              >
+                {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                <span>{printing ? 'Document taiyar ho raha hai...' : 'Print (full settings)'}</span>
+              </button>
+              <p className="text-[10px] text-slate-500 -mt-1">
+                Print dialog khul jayega — wahan paper size, orientation, margins, scale aur copies sab set karein.
+                {dirty ? ' Unsaved changes print nahi honge — pehle Save karein.' : ''}
+              </p>
+
               <button
                 type="button"
                 onClick={handleSave}

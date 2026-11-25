@@ -534,6 +534,281 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
  * style/GSM/colour/cartons/qty/remarks table, totals + remarks and
  * four signature lines.
  */
+/**
+ * Compact gate pass form matching the pre-printed factory stationery
+ * (BUTT COLLECTION / GATE PASS / OUTWARD-RETURNABLE / 12-row table).
+ *
+ * - Default: A4 portrait, one form.
+ * - `copies: 2`: A4 landscape sheet with two forms side by side + cut guide.
+ * - `blank: true` (or no order): empty fields/table for handwriting.
+ */
+function generateGatePassFormPdfBuffer(order, company, options = {}) {
+  return new Promise((resolve, reject) => {
+    try {
+      const copies = Number(options.copies) === 2 ? 2 : 1;
+      const blank = Boolean(options.blank) || !order;
+      const meta = order ? getGatePassMeta(order) : null;
+      const isTwoUp = copies === 2;
+
+      const doc = new PDFDocument({
+        size: 'A4',
+        layout: isTwoUp ? 'landscape' : 'portrait',
+        margin: 0
+      });
+      const buffers = [];
+      doc.on('data', chunk => buffers.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+
+      const companyName = meta?.companyName || company?.name || 'BUTT COLLECTION';
+      let tagline = company?.tagline || 'Quality Apparel Manufacturing & Export';
+      let cityLine = `${company?.city || 'Faisalabad'}, ${company?.country || 'Pakistan'}`;
+      if (meta?.companyTagline) {
+        const parts = String(meta.companyTagline).split('|').map(part => part.trim());
+        if (parts[0]) tagline = parts[0];
+        if (parts[1]) cityLine = parts[1];
+      }
+      const companyAddress = meta?.companyAddress || getCompanyAddress(company);
+
+      const allItems = !blank && meta?.items ? meta.items : [];
+      const chunks = [];
+      for (let i = 0; i < allItems.length; i += 12) {
+        chunks.push(allItems.slice(i, i + 12));
+      }
+      if (!chunks.length) chunks.push([]);
+
+      const drawForm = (pageItems, pageIndex = 0) => {
+        const left = 36;
+        const right = 559;
+        const width = right - left;
+
+        doc.fillColor('#000000').strokeColor('#000000');
+
+        // ---------- Company header ----------
+        doc.font('Helvetica-Bold').fontSize(26)
+          .text(String(companyName).toUpperCase(), left, 44, { width: 330, height: 32, ellipsis: true });
+        doc.font('Helvetica').fontSize(10.5)
+          .text(tagline, left, 82, { width: 330, height: 14, ellipsis: true })
+          .text(cityLine, left, 96, { width: 330, height: 14, ellipsis: true });
+        doc.fontSize(7.5)
+          .text(companyAddress, left, 108, { width: 340, height: 12, ellipsis: true });
+
+        // ---------- GATE PASS box ----------
+        doc.lineWidth(1.6).rect(380, 36, 179, 86).stroke();
+        doc.font('Helvetica-Bold').fontSize(12)
+          .text('GATE PASS', 380, 44, { width: 171, align: 'right' });
+
+        doc.lineWidth(1).moveTo(380, 60).lineTo(559, 60).stroke();
+        doc.font('Helvetica-Bold').fontSize(10)
+          .text('OUTWARD', 388, 66)
+          .text('RETURNABLE', 388, 82);
+        doc.lineWidth(1).rect(533, 65, 12, 12).stroke();
+        doc.lineWidth(1).rect(533, 81, 12, 12).stroke();
+        if (!blank) {
+          doc.moveTo(536, 68).lineTo(542, 74).moveTo(542, 68).lineTo(536, 74)
+            .lineWidth(1.1).stroke();
+        }
+
+        doc.lineWidth(1).moveTo(380, 98).lineTo(559, 98).stroke();
+        doc.font('Helvetica-Bold').fontSize(10)
+          .text('SR. NO.', 388, 104);
+        if (!blank && meta?.no) {
+          doc.font('Helvetica').fontSize(9)
+            .text(meta.no, 470, 105, { width: 82, align: 'right' });
+        }
+
+        doc.lineWidth(2.5).moveTo(left, 130).lineTo(right, 130).stroke();
+
+        // ---------- Party / transport fields ----------
+        const fieldValue = (value, x, y, widthValue) => {
+          if (blank) return;
+          const textValue = String(value || '').trim();
+          if (!textValue) return;
+          doc.font('Helvetica-Bold').fontSize(9)
+            .text(textValue, x, y, { width: widthValue, height: 14, ellipsis: true });
+        };
+
+        doc.font('Helvetica-Bold').fontSize(10)
+          .text('Party Name:', 36, 139)
+          .text('Date:', 372, 139);
+        doc.lineWidth(0.8)
+          .moveTo(108, 156).lineTo(350, 156).stroke()
+          .moveTo(404, 156).lineTo(559, 156).stroke();
+        fieldValue(meta?.customer, 110, 140, 236);
+        fieldValue(meta?.date, 406, 140, 150);
+
+        doc.font('Helvetica-Bold').fontSize(10)
+          .text('Through Mr.:', 36, 163)
+          .text('Vehicle #:', 372, 163);
+        doc.lineWidth(0.8)
+          .moveTo(108, 180).lineTo(350, 180).stroke()
+          .moveTo(424, 180).lineTo(559, 180).stroke();
+        fieldValue(meta?.through, 110, 164, 236);
+        fieldValue(meta?.vehicleNo, 426, 164, 130);
+
+        doc.font('Helvetica-Bold').fontSize(10)
+          .text('Driver Name:', 36, 187)
+          .text('Driver Cell No.:', 372, 187);
+        doc.lineWidth(0.8)
+          .moveTo(108, 204).lineTo(350, 204).stroke()
+          .moveTo(462, 204).lineTo(559, 204).stroke();
+        fieldValue(meta?.driverName, 110, 188, 236);
+        fieldValue(meta?.driverCell, 464, 188, 92);
+
+        // ---------- Items table ----------
+        const tableTop = 222;
+        const headerHeight = 26;
+        const rowHeight = 29;
+        const tableBottom = tableTop + headerHeight + rowHeight * 12;
+        const totalBottom = tableBottom + rowHeight;
+
+        doc.lineWidth(1.6).rect(left, tableTop, width, totalBottom - tableTop).stroke();
+
+        // Column separators
+        doc.lineWidth(1);
+        [66, 328, 388, 458].forEach(x => {
+          doc.moveTo(x, tableTop).lineTo(x, totalBottom).stroke();
+        });
+
+        // Header row
+        doc.lineWidth(1.6).moveTo(left, tableTop + headerHeight).lineTo(right, tableTop + headerHeight).stroke();
+        doc.font('Helvetica-Bold').fontSize(10);
+        doc.text('SR', 36, tableTop + 10, { width: 30, align: 'center' });
+        doc.text('DESCRIPTION', 66, tableTop + 10, { width: 262, align: 'center' });
+        doc.text('UNIT', 328, tableTop + 10, { width: 60, align: 'center' });
+        doc.text('QUANTITY', 388, tableTop + 10, { width: 70, align: 'center' });
+        doc.text('REMARKS', 458, tableTop + 10, { width: 101, align: 'center' });
+
+        // 12 numbered rows
+        for (let i = 0; i < 12; i += 1) {
+          const rowTop = tableTop + headerHeight + i * rowHeight;
+          const rowBottom = rowTop + rowHeight;
+          doc.lineWidth(i === 11 ? 1.6 : 0.8)
+            .moveTo(left, rowBottom).lineTo(right, rowBottom).stroke();
+
+          doc.font('Helvetica').fontSize(9)
+            .text(String(i + 1), 44, rowTop + 8, { width: 18, align: 'center' });
+
+          const item = pageItems[i];
+          if (!item) continue;
+
+          const description = [
+            item.style || '',
+            item.gsm && !String(item.style || '').includes(String(item.gsm)) ? `${item.gsm} GSM` : '',
+            item.color || ''
+          ].filter(Boolean).join(' - ');
+          const remarkParts = [];
+          if (Number(item.cartons)) remarkParts.push(`${Number(item.cartons)} CTN`);
+          if (item.remarks) remarkParts.push(item.remarks);
+
+          doc.font('Helvetica').fontSize(8)
+            .text(description || '-', 70, rowTop + 6, { width: 252, height: 20, ellipsis: true })
+            .text('PCS', 330, rowTop + 9, { width: 54, align: 'center' })
+            .text(Number(item.qty || 0).toLocaleString(), 390, rowTop + 9, { width: 62, align: 'right' });
+          doc.fontSize(7)
+            .text(remarkParts.join(' | ') || '-', 460, rowTop + 9, { width: 95, height: 18, ellipsis: true });
+        }
+
+        // Total row
+        const totalQty = pageItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+        doc.font('Helvetica-Bold').fontSize(11)
+          .text('Total', 328, tableBottom + 9, { width: 58, align: 'right' });
+        if (!blank) {
+          doc.fontSize(10)
+            .text(totalQty.toLocaleString(), 390, tableBottom + 10, { width: 62, align: 'right' });
+        }
+
+        // Dispatch references (small print, keeps the stationery layout)
+        if (!blank) {
+          const refs = [
+            meta?.orderNo ? `Order #: ${meta.orderNo}` : '',
+            meta?.destination ? `Destination: ${meta.destination}` : '',
+            meta?.purpose ? `Purpose: ${meta.purpose}` : '',
+            meta?.remarks ? `Remarks: ${meta.remarks}` : '',
+            meta?.generatedOn ? `Generated: ${meta.generatedOn}` : '',
+            chunks.length > 1 ? `Page ${pageIndex + 1} of ${chunks.length}` : ''
+          ].filter(Boolean).join('   •   ');
+          if (refs) {
+            doc.font('Helvetica').fontSize(7.5).fillColor('#333333')
+              .text(refs, left, totalBottom + 8, { width, height: 12, ellipsis: true });
+            doc.fillColor('#000000');
+          }
+        }
+
+        // ---------- Signatures ----------
+        const signatureY = 695;
+        doc.lineWidth(1);
+        [
+          [46, 171, meta?.preparedBy || 'Prepared by:'],
+          [232, 357, meta?.authorizedBy || 'Approved by:'],
+          [425, 550, meta?.receivedBy || 'Received by:']
+        ].forEach(([x1, x2, label]) => {
+          doc.moveTo(x1, signatureY).lineTo(x2, signatureY).stroke();
+          doc.font('Helvetica-Bold').fontSize(10)
+            .text(label, x1, signatureY + 7, { width: x2 - x1, align: 'center' });
+        });
+      };
+
+      const drawCutGuide = () => {
+        doc.save();
+        doc.strokeColor('#94A3B8').lineWidth(0.5)
+          .dash(4, { space: 4 })
+          .moveTo(doc.page.width / 2, 10)
+          .lineTo(doc.page.width / 2, doc.page.height - 10)
+          .stroke();
+        doc.undash();
+        doc.restore();
+      };
+
+      chunks.forEach((chunk, chunkIndex) => {
+        if (chunkIndex > 0) {
+          doc.addPage({
+            size: 'A4',
+            layout: isTwoUp ? 'landscape' : 'portrait',
+            margin: 0
+          });
+        }
+
+        if (isTwoUp) {
+          // The form is drawn in A4-portrait coordinates and scaled down, so tell
+          // PDFKit the usable page is taller than the landscape page. Without
+          // this, auto page-breaks split the copies mid-table.
+          doc.page.margins.bottom = -(841.89 - doc.page.height + 60);
+
+          // Two A5-ish copies on one A4 landscape sheet.
+          const scale = 0.67;
+          const copyWidth = 595.28 * scale;
+          const copyHeight = 841.89 * scale;
+          const gap = 20;
+          const totalWidth = copyWidth * 2 + gap;
+          const startX = (doc.page.width - totalWidth) / 2;
+          const startY = (doc.page.height - copyHeight) / 2;
+
+          doc.save();
+          doc.translate(startX, startY);
+          doc.scale(scale);
+          drawForm(chunk, chunkIndex);
+          doc.restore();
+
+          doc.save();
+          doc.translate(startX + copyWidth + gap, startY);
+          doc.scale(scale);
+          drawForm(chunk, chunkIndex);
+          doc.restore();
+
+          drawCutGuide();
+        } else {
+          drawForm(chunk, chunkIndex);
+        }
+      });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 function generateGatePassPdfBuffer(order, company) {
   return new Promise((resolve, reject) => {
     try {
@@ -916,178 +1191,231 @@ function generatePackingListPdfBuffer(order, company) {
 /**
  * Commercial invoice with order line items, received payment and balance.
  */
-function generateInvoicePdfBuffer(order, company) {
+function generateInvoicePdfBuffer(order, company, options = {}) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ margin: 40, size: 'A4' });
+      const copies = Number(options.copies) === 2 ? 2 : 1;
+      const invoice = getInvoiceMeta(order);
+
+      const items = Array.isArray(order.items) && order.items.length
+        ? order.items
+        : [{ style: '-', gsm: '', color: '-', qty: 0, rate: 0, amount: 0 }];
+
+      // Two copies on one sheet only when the invoice comfortably fits on a
+      // single portrait page (12 line items tak).
+      const isTwoUp = copies === 2 && items.length <= 12;
+
+      const doc = new PDFDocument(
+        isTwoUp
+          ? { size: 'A4', layout: 'landscape', margin: 0 }
+          : { margin: 40, size: 'A4' }
+      );
       const buffers = [];
       doc.on('data', chunk => buffers.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
       doc.on('error', reject);
 
-      const invoice = getInvoiceMeta(order);
-
-      const drawHeader = () => {
-        doc.rect(40, 40, 515, 65).fill('#1E3A8A');
-        doc.fillColor('#FFFFFF').fontSize(20).font('Helvetica-Bold')
-          .text(company?.name || 'BUTT COLLECTION', 55, 51);
-        doc.fontSize(8.5).font('Helvetica')
-          .text(`${company?.tagline || 'Quality Apparel Manufacturing & Export'} | Faisalabad, Pakistan`, 55, 76, { width: 260 });
-        doc.fontSize(7.5).font('Helvetica')
-          .text(getCompanyAddress(company), 55, 88, { width: 250 });
-        doc.fontSize(19).font('Helvetica-Bold')
-          .text('INVOICE', 300, 52, { align: 'right', width: 235 });
-        doc.fontSize(8.5).font('Helvetica')
-          .text(`Generated: ${new Date().toLocaleDateString('en-GB')}`, 350, 85, { align: 'right', width: 190 });
-      };
-
-      drawHeader();
-
-      // Meta box
-      let y = 120;
-      doc.rect(40, y, 515, 82).strokeColor('#CBD5E1').lineWidth(1).stroke();
-
-      const leftRows = [
-        ['Invoice #:', invoice.no],
-        ['Order #:', order.orderNumber || '-'],
-        ['Customer / Buyer:', order.customer || '-'],
-        ['Payment Terms:', invoice.terms]
-      ];
-      const rightRows = [
-        ['Invoice Date:', invoice.date],
-        ['Order Date:', order.orderDate || '-'],
-        ['Destination:', order.dispatchCity || 'Faisalabad'],
-        ['Status:', invoice.paymentStatus]
-      ];
-
-      leftRows.forEach(([label, value], index) => {
-        const rowY = y + 10 + index * 18;
-        doc.fillColor('#1E293B').fontSize(9).font('Helvetica-Bold').text(label, 50, rowY);
-        doc.fillColor('#0F172A').font('Helvetica').text(String(value || '-'), 155, rowY, { width: 150, height: 11, ellipsis: true });
-      });
-      rightRows.forEach(([label, value], index) => {
-        const rowY = y + 10 + index * 18;
-        doc.fillColor('#1E293B').fontSize(9).font('Helvetica-Bold').text(label, 320, rowY);
-        if (label === 'Status:') {
-          const color = value === 'PAID' ? '#16A34A' : value === 'PARTIAL' ? '#D97706' : '#DC2626';
-          doc.fillColor(color).font('Helvetica-Bold').text(String(value), 405, rowY, { width: 140 });
-        } else {
-          doc.fillColor('#0F172A').font('Helvetica').text(String(value || '-'), 405, rowY, { width: 140, height: 11, ellipsis: true });
+      const drawCopy = ({ offsetX = 0, offsetY = 0, scale = 1, paginate = true, compact = false } = {}) => {
+        const transformed = offsetX !== 0 || offsetY !== 0 || scale !== 1;
+        if (transformed) {
+          doc.save();
+          doc.translate(offsetX, offsetY);
+          doc.scale(scale);
         }
-      });
 
-      // Bill to
-      y = 216;
-      doc.rect(40, y, 515, 48).fill('#F8FAFC').strokeColor('#CBD5E1').lineWidth(1).stroke();
-      doc.fillColor('#64748B').fontSize(7.5).font('Helvetica-Bold').text('BILL TO / SHIP TO', 50, y + 8);
-      doc.fillColor('#0F172A').fontSize(11).font('Helvetica-Bold').text(order.customer || '-', 50, y + 19);
-      doc.fillColor('#475569').fontSize(8).font('Helvetica')
-        .text(`${order.dispatchCity || 'Faisalabad'} • ${invoice.terms}`, 50, y + 33);
+        const drawHeader = () => {
+          doc.rect(40, 40, 515, 65).fill('#1E3A8A');
+          doc.fillColor('#FFFFFF').fontSize(20).font('Helvetica-Bold')
+            .text(company?.name || 'BUTT COLLECTION', 55, 51);
+          doc.fontSize(8.5).font('Helvetica')
+            .text(`${company?.tagline || 'Quality Apparel Manufacturing & Export'} | Faisalabad, Pakistan`, 55, 76, { width: 260 });
+          doc.fontSize(7.5).font('Helvetica')
+            .text(getCompanyAddress(company), 55, 88, { width: 250 });
+          doc.fontSize(19).font('Helvetica-Bold')
+            .text('INVOICE', 300, 52, { align: 'right', width: 235 });
+          doc.fontSize(8.5).font('Helvetica')
+            .text(`Generated: ${new Date().toLocaleDateString('en-GB')}`, 350, 85, { align: 'right', width: 190 });
+        };
 
-      // Items table
-      y = 282;
-      doc.rect(40, y, 515, 24).fill('#2563EB');
-      doc.fillColor('#FFFFFF').fontSize(8).font('Helvetica-Bold');
-      doc.text('STYLE / DESCRIPTION', 48, y + 8, { width: 150 });
-      doc.text('GSM', 200, y + 8, { width: 40, align: 'center' });
-      doc.text('COLOR', 245, y + 8, { width: 75 });
-      doc.text('QTY (PCS)', 320, y + 8, { width: 55, align: 'right' });
-      doc.text('RATE (£)', 380, y + 8, { width: 60, align: 'right' });
-      doc.text('AMOUNT (£)', 445, y + 8, { width: 100, align: 'right' });
-      y += 24;
+        drawHeader();
 
-      let totalQty = 0;
-      let totalAmount = 0;
-      const items = Array.isArray(order.items) && order.items.length
-        ? order.items
-        : [{ style: '-', gsm: '', color: '-', qty: 0, rate: 0, amount: 0 }];
+        // Meta box
+        let y = 120;
+        doc.rect(40, y, 515, 82).strokeColor('#CBD5E1').lineWidth(1).stroke();
 
-      items.forEach((item, index) => {
-        if (y + 24 > 660) {
+        const leftRows = [
+          ['Invoice #:', invoice.no],
+          ['Order #:', order.orderNumber || '-'],
+          ['Customer / Buyer:', order.customer || '-'],
+          ['Payment Terms:', invoice.terms]
+        ];
+        const rightRows = [
+          ['Invoice Date:', invoice.date],
+          ['Order Date:', order.orderDate || '-'],
+          ['Destination:', order.dispatchCity || 'Faisalabad'],
+          ['Status:', invoice.paymentStatus]
+        ];
+
+        leftRows.forEach(([label, value], index) => {
+          const rowY = y + 10 + index * 18;
+          doc.fillColor('#1E293B').fontSize(9).font('Helvetica-Bold').text(label, 50, rowY);
+          doc.fillColor('#0F172A').font('Helvetica').text(String(value || '-'), 155, rowY, { width: 150, height: 11, ellipsis: true });
+        });
+        rightRows.forEach(([label, value], index) => {
+          const rowY = y + 10 + index * 18;
+          doc.fillColor('#1E293B').fontSize(9).font('Helvetica-Bold').text(label, 320, rowY);
+          if (label === 'Status:') {
+            const color = value === 'PAID' ? '#16A34A' : value === 'PARTIAL' ? '#D97706' : '#DC2626';
+            doc.fillColor(color).font('Helvetica-Bold').text(String(value), 405, rowY, { width: 140 });
+          } else {
+            doc.fillColor('#0F172A').font('Helvetica').text(String(value || '-'), 405, rowY, { width: 140, height: 11, ellipsis: true });
+          }
+        });
+
+        // Bill to
+        y = 216;
+        doc.rect(40, y, 515, 48).fill('#F8FAFC').strokeColor('#CBD5E1').lineWidth(1).stroke();
+        doc.fillColor('#64748B').fontSize(7.5).font('Helvetica-Bold').text('BILL TO / SHIP TO', 50, y + 8);
+        doc.fillColor('#0F172A').fontSize(11).font('Helvetica-Bold').text(order.customer || '-', 50, y + 19);
+        doc.fillColor('#475569').fontSize(8).font('Helvetica')
+          .text(`${order.dispatchCity || 'Faisalabad'} • ${invoice.terms}`, 50, y + 33);
+
+        // Items table
+        const drawTableHead = (headY) => {
+          doc.rect(40, headY, 515, 24).fill('#2563EB');
+          doc.fillColor('#FFFFFF').fontSize(8).font('Helvetica-Bold');
+          doc.text('STYLE / DESCRIPTION', 48, headY + 8, { width: 150 });
+          doc.text('GSM', 200, headY + 8, { width: 40, align: 'center' });
+          doc.text('COLOR', 245, headY + 8, { width: 75 });
+          doc.text('QTY (PCS)', 320, headY + 8, { width: 55, align: 'right' });
+          doc.text('RATE (£)', 380, headY + 8, { width: 60, align: 'right' });
+          doc.text('AMOUNT (£)', 445, headY + 8, { width: 100, align: 'right' });
+        };
+
+        y = 282;
+        drawTableHead(y);
+        y += 24;
+
+        let totalQty = 0;
+        let totalAmount = 0;
+
+        items.forEach((item, index) => {
+          if (paginate && y + 24 > 660) {
+            doc.addPage();
+            drawHeader();
+            y = 120;
+            drawTableHead(y);
+            y += 24;
+          }
+
+          if (index % 2 === 0) {
+            doc.rect(40, y, 515, 22).fill('#F8FAFC');
+          }
+          doc.rect(40, y, 515, 22).strokeColor('#E2E8F0').lineWidth(0.5).stroke();
+
+          const qty = Number(item.qty) || 0;
+          const amount = Number(item.amount) || 0;
+          totalQty += qty;
+          totalAmount += amount;
+
+          doc.fillColor('#0F172A').fontSize(8.5).font('Helvetica-Bold')
+            .text(item.style || '-', 48, y + 6, { width: 150, height: 11, ellipsis: true });
+          doc.font('Helvetica').fontSize(8)
+            .text(item.gsm || '-', 200, y + 6, { width: 40, align: 'center' })
+            .text(item.color || 'Assorted', 245, y + 6, { width: 75, height: 11, ellipsis: true })
+            .text(qty.toLocaleString(), 320, y + 6, { width: 55, align: 'right' })
+            .text(`£${Number(item.rate || 0).toFixed(2)}`, 380, y + 6, { width: 60, align: 'right' })
+            .text(`£${amount.toFixed(2)}`, 445, y + 6, { width: 100, align: 'right' });
+          y += 22;
+        });
+
+        doc.rect(40, y, 515, 24).fill('#E2E8F0');
+        doc.fillColor('#0F172A').fontSize(9).font('Helvetica-Bold');
+        doc.text('TOTAL', 48, y + 7, { width: 220 });
+        doc.text(totalQty.toLocaleString(), 320, y + 7, { width: 55, align: 'right' });
+        doc.text(`£${totalAmount.toFixed(2)}`, 445, y + 7, { width: 100, align: 'right' });
+
+        // Financial summary
+        y += compact ? 30 : 40;
+        const cardWidth = 165;
+        const cardGap = 10;
+        const cards = [
+          { label: 'Subtotal', value: invoice.total, color: '#0F172A', border: '#CBD5E1', bg: '#F8FAFC' },
+          { label: 'Received', value: invoice.received, color: '#15803D', border: '#BBF7D0', bg: '#F0FDF4' },
+          { label: 'Balance Due', value: invoice.balance, color: '#B91C1C', border: '#FECACA', bg: '#FEF2F2' }
+        ];
+
+        cards.forEach((card, index) => {
+          const x = 40 + index * (cardWidth + cardGap);
+          doc.rect(x, y, cardWidth, 56).fill(card.bg).strokeColor(card.border).lineWidth(1).stroke();
+          doc.fillColor('#64748B').fontSize(8).font('Helvetica-Bold')
+            .text(card.label.toUpperCase(), x + 10, y + 9, { width: cardWidth - 20 });
+          doc.fillColor(card.color).fontSize(14).font('Helvetica-Bold')
+            .text(`£${card.value.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`, x + 10, y + 24, { width: cardWidth - 20 });
+        });
+
+        // Notes / bank
+        y += compact ? 66 : 76;
+        doc.rect(40, y, 515, 72).strokeColor('#CBD5E1').lineWidth(1).stroke();
+        doc.fillColor('#1E293B').fontSize(8).font('Helvetica-Bold').text('Notes / Terms', 52, y + 10);
+        doc.fillColor('#475569').fontSize(8).font('Helvetica')
+          .text(invoice.notes || invoice.terms || '-', 52, y + 22, { width: 240, height: 40 });
+
+        doc.fillColor('#1E293B').fontSize(8).font('Helvetica-Bold').text('Bank / Payment Details', 310, y + 10);
+        doc.fillColor('#475569').fontSize(8).font('Helvetica')
+          .text(invoice.bankDetails || 'Please contact the merchandiser for bank transfer details.', 310, y + 22, { width: 230, height: 40 });
+
+        // Signature
+        let sigY = y + (compact ? 84 : 120);
+        if (paginate && sigY > 750) {
           doc.addPage();
           drawHeader();
-          y = 120;
-          doc.rect(40, y, 515, 24).fill('#2563EB');
-          doc.fillColor('#FFFFFF').fontSize(8).font('Helvetica-Bold');
-          doc.text('STYLE / DESCRIPTION', 48, y + 8, { width: 150 });
-          doc.text('GSM', 200, y + 8, { width: 40, align: 'center' });
-          doc.text('COLOR', 245, y + 8, { width: 75 });
-          doc.text('QTY (PCS)', 320, y + 8, { width: 55, align: 'right' });
-          doc.text('RATE (£)', 380, y + 8, { width: 60, align: 'right' });
-          doc.text('AMOUNT (£)', 445, y + 8, { width: 100, align: 'right' });
-          y += 24;
+          sigY = 200;
+        }
+        doc.moveTo(350, sigY).lineTo(490, sigY).lineWidth(0.8).strokeColor('#94A3B8').stroke();
+        doc.fillColor('#475569').fontSize(8.5).font('Helvetica')
+          .text('Authorized Signature / Factory', 350, sigY + 7, { width: 140, align: 'center' });
+
+        if (compact) {
+          if (sigY <= 795) {
+            doc.fillColor('#94A3B8').fontSize(7).font('Helvetica')
+              .text('Thank you for your business.', 40, 825, { width: 515, align: 'center' });
+          }
+        } else {
+          doc.fillColor('#94A3B8').fontSize(7).font('Helvetica')
+            .text('Thank you for your business.', 40, 780, { width: 515, align: 'center' });
         }
 
-        if (index % 2 === 0) {
-          doc.rect(40, y, 515, 22).fill('#F8FAFC');
-        }
-        doc.rect(40, y, 515, 22).strokeColor('#E2E8F0').lineWidth(0.5).stroke();
+        if (transformed) doc.restore();
+      };
 
-        const qty = Number(item.qty) || 0;
-        const amount = Number(item.amount) || 0;
-        totalQty += qty;
-        totalAmount += amount;
-
-        doc.fillColor('#0F172A').fontSize(8.5).font('Helvetica-Bold')
-          .text(item.style || '-', 48, y + 6, { width: 150, height: 11, ellipsis: true });
-        doc.font('Helvetica').fontSize(8)
-          .text(item.gsm || '-', 200, y + 6, { width: 40, align: 'center' })
-          .text(item.color || 'Assorted', 245, y + 6, { width: 75, height: 11, ellipsis: true })
-          .text(qty.toLocaleString(), 320, y + 6, { width: 55, align: 'right' })
-          .text(`£${Number(item.rate || 0).toFixed(2)}`, 380, y + 6, { width: 60, align: 'right' })
-          .text(`£${amount.toFixed(2)}`, 445, y + 6, { width: 100, align: 'right' });
-        y += 22;
-      });
-
-      doc.rect(40, y, 515, 24).fill('#E2E8F0');
-      doc.fillColor('#0F172A').fontSize(9).font('Helvetica-Bold');
-      doc.text('TOTAL', 48, y + 7, { width: 220 });
-      doc.text(totalQty.toLocaleString(), 320, y + 7, { width: 55, align: 'right' });
-      doc.text(`£${totalAmount.toFixed(2)}`, 445, y + 7, { width: 100, align: 'right' });
-
-      // Financial summary
-      y += 40;
-      const cardWidth = 165;
-      const cardGap = 10;
-      const cards = [
-        { label: 'Subtotal', value: invoice.total, color: '#0F172A', border: '#CBD5E1', bg: '#F8FAFC' },
-        { label: 'Received', value: invoice.received, color: '#15803D', border: '#BBF7D0', bg: '#F0FDF4' },
-        { label: 'Balance Due', value: invoice.balance, color: '#B91C1C', border: '#FECACA', bg: '#FEF2F2' }
-      ];
-
-      cards.forEach((card, index) => {
-        const x = 40 + index * (cardWidth + cardGap);
-        doc.rect(x, y, cardWidth, 56).fill(card.bg).strokeColor(card.border).lineWidth(1).stroke();
-        doc.fillColor('#64748B').fontSize(8).font('Helvetica-Bold')
-          .text(card.label.toUpperCase(), x + 10, y + 9, { width: cardWidth - 20 });
-        doc.fillColor(card.color).fontSize(14).font('Helvetica-Bold')
-          .text(`£${card.value.toLocaleString('en-GB', { minimumFractionDigits: 2 })}`, x + 10, y + 24, { width: cardWidth - 20 });
-      });
-
-      // Notes / bank
-      y += 76;
-      doc.rect(40, y, 515, 72).strokeColor('#CBD5E1').lineWidth(1).stroke();
-      doc.fillColor('#1E293B').fontSize(8).font('Helvetica-Bold').text('Notes / Terms', 52, y + 10);
-      doc.fillColor('#475569').fontSize(8).font('Helvetica')
-        .text(invoice.notes || invoice.terms || '-', 52, y + 22, { width: 240, height: 40 });
-
-      doc.fillColor('#1E293B').fontSize(8).font('Helvetica-Bold').text('Bank / Payment Details', 310, y + 10);
-      doc.fillColor('#475569').fontSize(8).font('Helvetica')
-        .text(invoice.bankDetails || 'Please contact the merchandiser for bank transfer details.', 310, y + 22, { width: 230, height: 40 });
-
-      // Signature
-      let sigY = y + 120;
-      if (sigY > 770) {
-        doc.addPage();
-        drawHeader();
-        sigY = 200;
+      if (!isTwoUp) {
+        drawCopy({ paginate: true });
+        doc.end();
+        return;
       }
-      doc.moveTo(350, sigY).lineTo(490, sigY).lineWidth(0.8).strokeColor('#94A3B8').stroke();
-      doc.fillColor('#475569').fontSize(8.5).font('Helvetica')
-        .text('Authorized Signature / Factory', 350, sigY + 7, { width: 140, align: 'center' });
 
-      doc.fillColor('#94A3B8').fontSize(7).font('Helvetica')
-        .text('Thank you for your business.', 40, 800, { width: 515, align: 'center' });
+      // A4 landscape: two identical invoices side by side + cut guide.
+      doc.page.margins.bottom = -(841.89 - doc.page.height + 60);
+      const scale = 0.67;
+      const scaledWidth = 595.28 * scale;
+      const gap = 30;
+      const startX = (doc.page.width - (scaledWidth * 2 + gap)) / 2;
+      const startY = 10;
+
+      drawCopy({ offsetX: startX, offsetY: startY, scale, paginate: false, compact: true });
+      drawCopy({ offsetX: startX + scaledWidth + gap, offsetY: startY, scale, paginate: false, compact: true });
+
+      const midX = doc.page.width / 2;
+      doc.save();
+      doc.dash(4, { space: 3 })
+        .moveTo(midX, 10)
+        .lineTo(midX, doc.page.height - 10)
+        .strokeColor('#94A3B8')
+        .lineWidth(0.8)
+        .stroke();
+      doc.undash();
+      doc.restore();
 
       doc.end();
     } catch (err) {
@@ -1100,6 +1428,7 @@ module.exports = {
   generateOrderPdfBuffer,
   generateCartonLabelPdfBuffer,
   generateGatePassPdfBuffer,
+  generateGatePassFormPdfBuffer,
   generatePackingListPdfBuffer,
   generateInvoicePdfBuffer
 };

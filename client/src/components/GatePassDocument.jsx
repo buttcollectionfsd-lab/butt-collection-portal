@@ -1,174 +1,191 @@
 import React from 'react';
-import { getGatePassMeta, getGatePassTotals } from '../utils/gatePass';
+import { getGatePassMeta } from '../utils/gatePass';
 import { getCompanyAddress } from '../utils/company';
 
+const Field = ({ label, value, className = '' }) => (
+  <div className={className}>
+    <div className="flex items-end gap-1">
+      <span className="font-bold whitespace-nowrap text-[10px]">{label}</span>
+      <span className="flex-1 min-h-[15px] border-b border-black px-1 pb-0.5 text-[9px] font-bold truncate leading-tight">
+        {value || ''}
+      </span>
+    </div>
+  </div>
+);
+
+const CheckBox = ({ checked }) => (
+  <span className="inline-flex w-3 h-3 border border-black items-center justify-center leading-none">
+    {checked ? <span className="text-[9px] font-bold leading-none">X</span> : null}
+  </span>
+);
+
 /**
- * A4-style dispatch gate pass, matching the approved sample layout.
- * Used by the gate pass editor and its PDF tab for a no-download preview.
+ * A4 gate pass built to match the factory's pre-printed stationery:
+ * company header, GATE PASS box (OUTWARD / RETURNABLE), party + transport
+ * fields, a 12-row SR/DESCRIPTION/UNIT/QUANTITY/REMARKS table, and the
+ * three signature lines.
  */
-export default function GatePassDocument({ order, company }) {
+export default function GatePassDocument({ order, company, blank = false }) {
   const meta = getGatePassMeta(order);
-  const items = meta.items;
-  const totals = getGatePassTotals(order);
 
   const companyName = meta.companyName || company?.name || 'BUTT COLLECTION';
-  const companyTagline = meta.companyTagline
-    || `${company?.tagline || 'Quality Apparel Manufacturing & Export'} | ${company?.city || 'Faisalabad'}, ${company?.country || 'Pakistan'}`;
+  const taglineParts = String(
+    meta.companyTagline
+      || `${company?.tagline || 'Quality Apparel Manufacturing & Export'} | ${company?.city || 'Faisalabad'}, ${company?.country || 'Pakistan'}`
+  ).split('|').map(part => part.trim());
+  const tagline = taglineParts[0] || '';
+  const cityLine = taglineParts.slice(1).join(' | ')
+    || `${company?.city || 'Faisalabad'}, ${company?.country || 'Pakistan'}`;
   const companyAddress = meta.companyAddress || getCompanyAddress(company);
 
-  const metaFields = [
-    ['Gate Pass #', meta.no],
-    ['Vehicle No.', meta.vehicleNo || '—'],
-    ['Date', meta.date],
-    ['Driver Name', meta.driverName || '—'],
-    ['Customer / Buyer', meta.customer || '—'],
-    ['Destination', meta.destination || '—'],
-    ['Order #', meta.orderNo || '—'],
-    ['Purpose', meta.purpose || '—']
+  const items = blank ? [] : (meta.items || []).slice(0, 12);
+  const totalQty = items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+  const value = (input) => (blank ? '' : input || '');
+
+  const rows = Array.from({ length: 12 }, (_, index) => items[index] || null);
+  const signatureLabels = [
+    meta.preparedBy || 'Prepared by:',
+    meta.authorizedBy || 'Approved by:',
+    meta.receivedBy || 'Received by:'
   ];
 
-  const signatures = [meta.preparedBy, meta.gateKeeper, meta.receivedBy, meta.authorizedBy];
-
   return (
-    <div className="bg-white shadow-2xl rounded-sm overflow-hidden">
-      {/* Header */}
-      <div className="bg-blue-900 text-white px-6 sm:px-8 py-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+    <div
+      className="bg-white text-black px-6 pt-6 pb-5 shadow-2xl rounded-sm overflow-hidden"
+      style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+    >
+      {/* ---------- Header ---------- */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1 pt-1">
+          <h1 className="text-[26px] font-extrabold leading-none tracking-tight uppercase truncate">
             {companyName}
           </h1>
-          <p className="text-[11px] sm:text-xs text-blue-100 mt-1">
-            {companyTagline}
-          </p>
-          <p className="text-[10px] text-blue-200 mt-0.5">
-            {companyAddress}
-          </p>
+          <p className="mt-2 text-[10px] leading-tight truncate">{tagline}</p>
+          <p className="text-[10px] leading-tight truncate">{cityLine}</p>
+          <p className="mt-1 text-[7.5px] leading-snug">{companyAddress}</p>
         </div>
-        <div className="text-right shrink-0">
-          <p className="text-lg sm:text-xl font-extrabold tracking-[0.18em]">{meta.title}</p>
-          <p className="text-[10px] text-blue-200 mt-1">Generated: {meta.generatedOn}</p>
+
+        <div className="w-[179px] shrink-0 border-[1.6px] border-black">
+          <div className="text-center text-[12px] font-extrabold tracking-[0.12em] py-1 border-b border-black uppercase">
+            {blank ? 'GATE PASS' : meta.title || 'GATE PASS'}
+          </div>
+          <div className="px-2 pt-1 pb-1.5 border-b border-black space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold">OUTWARD</span>
+              <CheckBox checked={!blank} />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold">RETURNABLE</span>
+              <CheckBox checked={false} />
+            </div>
+          </div>
+          <div className="px-2 py-1 flex items-center justify-between">
+            <span className="text-[10px] font-bold">SR. NO.</span>
+            <span className="text-[9px] font-bold">{blank ? '' : meta.no}</span>
+          </div>
         </div>
       </div>
 
-      <div className="p-6 sm:p-8 text-slate-900">
-        {/* Meta */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 border border-slate-300 rounded-md p-4 text-xs">
-          {metaFields.map(([label, value]) => (
-            <div key={label} className="flex justify-between gap-4 border-b border-slate-100 py-1.5">
-              <span className="font-semibold text-slate-500">{label}</span>
-              <span className="font-bold text-slate-900 text-right break-words">{value}</span>
-            </div>
-          ))}
-        </div>
+      <div className="h-[2.5px] bg-black mt-3" />
 
-        {/* Items */}
-        <div className="mt-6">
-          <h2 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600 mb-2">
-            Dispatch Items
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs border border-slate-300 border-collapse">
-              <thead className="bg-blue-700 text-white">
-                <tr>
-                  <th className="py-2 px-2 text-left">Style / Description</th>
-                  <th className="py-2 px-2 text-center">GSM</th>
-                  <th className="py-2 px-2 text-left">Color</th>
-                  <th className="py-2 px-2 text-right">Cartons</th>
-                  <th className="py-2 px-2 text-right">Qty (Pcs)</th>
-                  <th className="py-2 px-2 text-left">Remarks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.length === 0 && (
-                  <tr>
-                    <td colSpan="6" className="py-3 px-2 text-center text-slate-500 border-t border-slate-200">
-                      No dispatch items
-                    </td>
-                  </tr>
-                )}
-                {items.map((item, index) => (
-                  <tr key={item.id || index} className={index % 2 === 1 ? 'bg-slate-50' : 'bg-white'}>
-                    <td className="py-2 px-2 font-semibold text-slate-900 border-t border-slate-200">
-                      {item.style || '—'}
-                    </td>
-                    <td className="py-2 px-2 text-center text-slate-600 border-t border-slate-200">
-                      {item.gsm || '-'}
-                    </td>
-                    <td className="py-2 px-2 text-slate-600 border-t border-slate-200">
-                      {item.color || 'Assorted'}
-                    </td>
-                    <td className="py-2 px-2 text-right text-slate-600 border-t border-slate-200">
-                      {Number(item.cartons) || '-'}
-                    </td>
-                    <td className="py-2 px-2 text-right font-semibold text-slate-900 border-t border-slate-200">
-                      {Number(item.qty || 0).toLocaleString()}
-                    </td>
-                    <td className="py-2 px-2 text-slate-600 border-t border-slate-200">
-                      {item.remarks || '-'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="bg-slate-100 font-bold">
-                <tr>
-                  <td colSpan="3" className="py-2 px-2 text-slate-700 border-t border-slate-300">
-                    TOTAL
-                  </td>
-                  <td className="py-2 px-2 text-right text-slate-900 border-t border-slate-300">
-                    {totals.cartons ? totals.cartons.toLocaleString() : '-'}
-                  </td>
-                  <td className="py-2 px-2 text-right text-slate-900 border-t border-slate-300">
-                    {totals.pieces.toLocaleString()}
-                  </td>
-                  <td className="py-2 px-2 border-t border-slate-300"></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+      {/* ---------- Party / transport ---------- */}
+      <div className="mt-2.5 space-y-2">
+        <div className="grid grid-cols-2 gap-x-6">
+          <Field label="Party Name:" value={value(meta.customer)} />
+          <Field label="Date:" value={value(meta.date)} />
         </div>
-
-        {/* Totals + remarks */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
-          <div className="border border-slate-300 bg-slate-50 rounded-md p-3">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Total Pieces
-            </span>
-            <span className="block font-mono font-extrabold text-slate-900 text-lg mt-1">
-              {totals.pieces.toLocaleString()}
-            </span>
-          </div>
-          <div className="border border-slate-300 bg-slate-50 rounded-md p-3">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Total Cartons
-            </span>
-            <span className="block font-mono font-extrabold text-slate-900 text-lg mt-1">
-              {totals.cartons ? totals.cartons.toLocaleString() : '-'}
-            </span>
-          </div>
-          <div className="border border-slate-300 bg-slate-50 rounded-md p-3">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Remarks
-            </span>
-            <span className="block text-xs font-medium text-slate-800 mt-1 whitespace-pre-wrap">
-              {meta.remarks || '—'}
-            </span>
-          </div>
+        <div className="grid grid-cols-2 gap-x-6">
+          <Field label="Through Mr.:" value={value(meta.through)} />
+          <Field label="Vehicle #:" value={value(meta.vehicleNo)} />
         </div>
-
-        {/* Signatures */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8 mt-14 text-center text-[10px] text-slate-600">
-          {signatures.map((label, index) => (
-            <div key={`${label}-${index}`} className="border-t border-slate-400 pt-2">
-              {label}
-            </div>
-          ))}
+        <div className="grid grid-cols-2 gap-x-6">
+          <Field label="Driver Name:" value={value(meta.driverName)} />
+          <Field label="Driver Cell No.:" value={value(meta.driverCell)} />
         </div>
+      </div>
 
-        <p className="text-center text-[9px] text-slate-400 mt-8">
-          {meta.footerNote}
-        </p>
+      {/* ---------- Items table ---------- */}
+      <table className="w-full mt-3 border-collapse table-fixed border-[1.6px] border-black text-[9px]">
+        <colgroup>
+          <col style={{ width: '5.7%' }} />
+          <col style={{ width: '50.1%' }} />
+          <col style={{ width: '11.5%' }} />
+          <col style={{ width: '13.4%' }} />
+          <col style={{ width: '19.3%' }} />
+        </colgroup>
+        <thead>
+          <tr className="border-b-[1.6px] border-black">
+            <th className="border-r border-black py-1.5 text-[10px] font-extrabold">SR</th>
+            <th className="border-r border-black py-1.5 text-[10px] font-extrabold">DESCRIPTION</th>
+            <th className="border-r border-black py-1.5 text-[10px] font-extrabold">UNIT</th>
+            <th className="border-r border-black py-1.5 text-[10px] font-extrabold">QUANTITY</th>
+            <th className="py-1.5 text-[10px] font-extrabold">REMARKS</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((item, index) => {
+            const description = item
+              ? [
+                item.style,
+                item.gsm && !String(item.style || '').includes(String(item.gsm)) ? `${item.gsm} GSM` : '',
+                item.color
+              ].filter(Boolean).join(' - ')
+              : '';
+            const remarks = item
+              ? [
+                Number(item.cartons) ? `${Number(item.cartons)} CTN` : '',
+                item.remarks || ''
+              ].filter(Boolean).join(' | ')
+              : '';
+
+            return (
+              <tr key={item?.id || `row-${index}`} className="border-b border-black last:border-b-[1.6px]">
+                <td className="border-r border-black py-1.5 text-center align-middle">{index + 1}</td>
+                <td className="border-r border-black px-1.5 py-1.5 align-middle">
+                  <span className="block truncate font-medium">{description}</span>
+                </td>
+                <td className="border-r border-black text-center align-middle">{item ? 'PCS' : ''}</td>
+                <td className="border-r border-black px-1.5 text-right align-middle font-semibold">
+                  {item ? Number(item.qty || 0).toLocaleString() : ''}
+                </td>
+                <td className="px-1.5 py-1.5 align-middle">
+                  <span className="block truncate text-[8px]">{remarks}</span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-[1.6px] border-black font-extrabold">
+            <td colSpan="3" className="border-r border-black px-2 py-1.5 text-right text-[11px]">
+              Total
+            </td>
+            <td className="border-r border-black px-1.5 py-1.5 text-right text-[10px]">
+              {blank ? '' : totalQty.toLocaleString()}
+            </td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      {/* Extra dispatch references kept visible without changing the form */}
+      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[8px] leading-tight text-black">
+        {meta.orderNo && <span><b>Order #:</b> {meta.orderNo}</span>}
+        {meta.destination && <span><b>Destination:</b> {meta.destination}</span>}
+        {meta.purpose && <span><b>Purpose:</b> {meta.purpose}</span>}
+        {meta.remarks && <span><b>Remarks:</b> {meta.remarks}</span>}
+        {meta.generatedOn && <span><b>Generated:</b> {meta.generatedOn}</span>}
+      </div>
+
+      {/* ---------- Signatures ---------- */}
+      <div className="mt-20 grid grid-cols-3 gap-8">
+        {signatureLabels.map((label, index) => (
+          <div key={`${label}-${index}`}>
+            <div className="h-[1px] bg-black" />
+            <p className="mt-1.5 text-center text-[10px] font-bold">{label}</p>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
-

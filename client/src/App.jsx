@@ -32,6 +32,7 @@ export default function App() {
   const [database, setDatabase] = useState('MongoDB');
   const [stats, setStats] = useState(null);
   const [orders, setOrders] = useState([]);
+  const [standaloneDocs, setStandaloneDocs] = useState([]);
   const [payments, setPayments] = useState([]);
   const [labels, setLabels] = useState([]);
   const [todayDate, setTodayDate] = useState('');
@@ -63,11 +64,12 @@ export default function App() {
       if (!silent) setLoading(true);
       setError(null);
 
-      const [dashRes, ordersRes, payRes, labelRes] = await Promise.all([
+      const [dashRes, ordersRes, payRes, labelRes, standaloneRes] = await Promise.all([
         fetch(`${API_BASE}/dashboard`),
         fetch(`${API_BASE}/orders`),
         fetch(`${API_BASE}/payments`),
-        fetch(`${API_BASE}/labels`)
+        fetch(`${API_BASE}/labels`),
+        fetch(`${API_BASE}/standalone-documents`)
       ]);
 
       if (!dashRes.ok) throw new Error('Backend server is starting or unreachable');
@@ -76,11 +78,13 @@ export default function App() {
       const ordersData = await ordersRes.json();
       const payData = await payRes.json();
       const labelData = await labelRes.json();
+      const standaloneData = standaloneRes.ok ? await standaloneRes.json() : [];
 
       setCompany(dashData.company);
       setDatabase(dashData.database || 'MongoDB');
       setStats(dashData.stats);
       setOrders(ordersData);
+      setStandaloneDocs(Array.isArray(standaloneData) ? standaloneData : []);
       setPayments(payData);
       setLabels(labelData);
       setTodayDate(dashData.todayDate);
@@ -284,6 +288,64 @@ export default function App() {
 
     showToast(`${label} created — ab details edit karke PDF/Word nikalein`);
     return merged;
+  };
+
+  const handleCreateStandalone = async (type, options = {}) => {
+    const labels = {
+      gatePass: 'Gate Pass',
+      packingList: 'Packing List',
+      invoice: 'Commercial Invoice'
+    };
+    const label = labels[type] || 'Document';
+
+    const res = await fetch(`${API_BASE}/standalone-documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type,
+        customer: options.customer || '',
+        reference: options.reference || '',
+        date: options.date || ''
+      })
+    });
+
+    if (!res.ok) {
+      let message = `${label} create nahi ho saka`;
+      try {
+        const body = await res.json();
+        if (body?.error) message = body.error;
+      } catch (_) {
+        // keep default message
+      }
+      throw new Error(message);
+    }
+
+    const created = await res.json();
+    setStandaloneDocs(prev => [created, ...prev]);
+
+    if (type === 'gatePass') setGatePassOrder(created);
+    if (type === 'packingList') setPackingListOrder(created);
+    if (type === 'invoice') setInvoiceOrder(created);
+
+    showToast(`${label} created — ab details edit karke PDF/Word nikalein`);
+    return created;
+  };
+
+  const handleDeleteStandalone = async (doc) => {
+    if (!doc?.id) return;
+    if (!window.confirm(`${doc.customer || 'Document'} — delete karein?`)) return;
+
+    const res = await fetch(`${API_BASE}/orders/${doc.id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      showToast('Document delete nahi ho saka', 'error');
+      return;
+    }
+
+    setStandaloneDocs(prev => prev.filter(item => item.id !== doc.id));
+    setGatePassOrder(prev => (prev?.id === doc.id ? null : prev));
+    setPackingListOrder(prev => (prev?.id === doc.id ? null : prev));
+    setInvoiceOrder(prev => (prev?.id === doc.id ? null : prev));
+    showToast('Document deleted');
   };
 
   const handleSaveOrder = async (orderData) => {
@@ -571,8 +633,11 @@ export default function App() {
               <OrderDocumentsTab
                 orders={orders}
                 company={company}
+                standaloneDocs={standaloneDocs}
                 onCreate={handleCreateDocument}
                 onOpen={handleOpenDocument}
+                onCreateStandalone={handleCreateStandalone}
+                onDeleteStandalone={handleDeleteStandalone}
               />
             )}
 

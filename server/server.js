@@ -16,6 +16,7 @@ const {
   generateOrderPdfBuffer,
   generateCartonLabelPdfBuffer,
   generateGatePassPdfBuffer,
+  generateGatePassFormPdfBuffer,
   generatePackingListPdfBuffer,
   generateInvoicePdfBuffer
 } = require('./services/pdfService');
@@ -55,12 +56,19 @@ function calculateDaysLeft(deadline) {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
 
-async function getAllOrders() {
+async function getAllOrders({ includeStandalone = false } = {}) {
   if (getIsConnected()) {
-    const list = await Order.find().sort({ orderDate: -1 }).lean();
+    const query = includeStandalone ? {} : { isStandalone: { $ne: true } };
+    const list = await Order.find(query).sort({ orderDate: -1 }).lean();
     return list.map(o => ({ ...o, id: o._id.toString() }));
   }
-  return readDb().orders || [];
+  const orders = readDb().orders || [];
+  return includeStandalone ? orders : orders.filter(o => !o.isStandalone);
+}
+
+async function findAnyOrder(id) {
+  const all = await getAllOrders({ includeStandalone: true });
+  return all.find(o => o.id === id) || null;
 }
 
 async function getAllPayments() {
@@ -259,6 +267,115 @@ app.get('/api/orders', async (req, res) => {
     }
 
     res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// STANDALONE DOCUMENTS (created without an existing order)
+// They live in the orders store behind `isStandalone` so the same
+// editors, PDF and Word generators can be reused, but they are
+// filtered out of every order list / dashboard / Excel export.
+// -------------------------------------------------------------
+const STANDALONE_TYPES = {
+  gatePass: { label: 'Gate Pass', prefix: 'GP' },
+  packingList: { label: 'Packing List', prefix: 'PL' },
+  invoice: { label: 'Commercial Invoice', prefix: 'INV' }
+};
+
+app.get('/api/standalone-documents', async (req, res) => {
+  try {
+    const all = await getAllOrders({ includeStandalone: true });
+    const type = String(req.query.type || '').trim();
+    const docs = all
+      .filter(o => o.isStandalone)
+      .filter(o => !type || o.standaloneType === type)
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    res.json(docs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/standalone-documents', rejectArabicPayload, async (req, res) => {
+  try {
+    const type = String(req.body.type || '').trim();
+    const config = STANDALONE_TYPES[type];
+    if (!config) {
+      return res.status(400).json({ error: 'type must be gatePass, packingList or invoice' });
+    }
+
+    const customer = String(req.body.customer || '').trim() || 'Walk-in Customer';
+    const reference = String(req.body.reference || '').trim();
+
+    const all = await getAllOrders({ includeStandalone: true });
+    const usedNumbers = all
+      .filter(o => o.isStandalone && o.standaloneType === type)
+      .map(o => {
+        const raw = type === 'gatePass' ? o.gatePassNo : type === 'packingList' ? o.packingListNo : o.invoiceNo;
+        const match = String(raw || '').match(/(\d+)/);
+        return match ? Number(match[1]) : 0;
+      });
+    const seq = String(Math.max(0, ...usedNumbers) + 1).padStart(3, '0');
+    const today = new Date().toISOString().split('T')[0];
+    const requestedDate = String(req.body.date || '').trim();
+    const docDate = /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? requestedDate : today;
+    const docNo = `${config.prefix}-${seq}`;
+
+    const base = {
+      orderNumber: reference || `MANUAL-${seq}`,
+      customer,
+      manufacturer: 'Butt Collection',
+      dispatchCity: 'Faisalabad',
+      orderDate: docDate,
+      deadline: '',
+      shippedOn: '',
+      status: 'In Progress',
+      isStandalone: true,
+      standaloneType: type,
+      totalPieces: 0,
+      totalAmount: 0,
+      amountReceived: 0,
+      balance: 0,
+      notes: '',
+      docTitle: 'MERCHANDISER WORK ORDER',
+      docStatus: '',
+      footerLeft: 'Prepared by Merchandiser',
+      footerRight: 'Authorized Signature / Factory',
+      items: []
+    };
+
+    const typeFields = type === 'gatePass'
+      ? {
+          gatePassNo: docNo,
+          gatePassDate: docDate,
+          gatePassCustomer: customer,
+          gatePassPurpose: 'Dispatch of finished goods',
+          gatePassTitle: 'GATE PASS',
+          gatePassItems: []
+        }
+      : type === 'packingList'
+        ? { packingListNo: docNo, packingDate: docDate }
+        : {
+            invoiceNo: docNo,
+            invoiceDate: docDate,
+            invoiceTerms: 'Payment due on receipt'
+          };
+
+    const payload = { ...base, ...typeFields, createdAt: new Date().toISOString() };
+
+    if (getIsConnected()) {
+      const created = await Order.create(payload);
+      return res.status(201).json({ ...created.toObject(), id: created._id.toString() });
+    }
+
+    const db = readDb();
+    const record = { id: `doc-${Date.now()}-${Math.floor(Math.random() * 1000)}`, ...payload };
+    db.orders = db.orders || [];
+    db.orders.push(record);
+    writeDb(db);
+    res.status(201).json(record);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -696,18 +813,27 @@ app.get('/api/export/pdf/order/:id', async (req, res) => {
 // 3. Export Dispatch Gate Pass as PDF (.pdf)
 app.get('/api/export/pdf/gate-pass/:id', async (req, res) => {
   try {
-    const orders = await getAllOrders();
+    const order = await findAnyOrder(req.params.id);
     const company = await getCompanyInfo();
-    const order = orders.find(o => o.id === req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
-    const buffer = await generateGatePassPdfBuffer(order, company);
+    const layout = String(req.query.layout || 'form').toLowerCase();
+    const isForm = layout !== 'legacy';
+    const buffer = isForm
+      ? await generateGatePassFormPdfBuffer(order, company, {
+          copies: layout === 'landscape-2up' || layout === '2up' || layout === 'landscape' ? 2 : 1,
+          blank: req.query.blank === '1' || req.query.blank === 'true'
+        })
+      : await generateGatePassPdfBuffer(order, company);
     const gateNo = formatGatePassNumber(order).replace(/\s+/g, '_');
+    const layoutSuffix = layout === 'landscape' || layout === 'landscape-2up' || layout === '2up'
+      ? '_Landscape_2up'
+      : '';
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `${req.query.inline ? 'inline' : 'attachment'}; filename="${gateNo}_Gate_Pass.pdf"`
+      `${req.query.inline ? 'inline' : 'attachment'}; filename="${gateNo}_Gate_Pass${layoutSuffix}.pdf"`
     );
 
     res.send(buffer);
@@ -720,9 +846,8 @@ app.get('/api/export/pdf/gate-pass/:id', async (req, res) => {
 // 4. Export Dispatch Gate Pass as Microsoft Word (.docx)
 app.get('/api/export/docx/gate-pass/:id', async (req, res) => {
   try {
-    const orders = await getAllOrders();
+    const order = await findAnyOrder(req.params.id);
     const company = await getCompanyInfo();
-    const order = orders.find(o => o.id === req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
     const buffer = await generateGatePassDocx(order, company);
@@ -747,9 +872,8 @@ app.get('/api/export/docx/gate-pass/:id', async (req, res) => {
 // 5. Export Packing List as PDF (.pdf)
 app.get('/api/export/pdf/packing-list/:id', async (req, res) => {
   try {
-    const orders = await getAllOrders();
+    const order = await findAnyOrder(req.params.id);
     const company = await getCompanyInfo();
-    const order = orders.find(o => o.id === req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
     const buffer = await generatePackingListPdfBuffer(order, company);
@@ -771,9 +895,8 @@ app.get('/api/export/pdf/packing-list/:id', async (req, res) => {
 // 6. Export Packing List as Microsoft Word (.docx)
 app.get('/api/export/docx/packing-list/:id', async (req, res) => {
   try {
-    const orders = await getAllOrders();
+    const order = await findAnyOrder(req.params.id);
     const company = await getCompanyInfo();
-    const order = orders.find(o => o.id === req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
     const buffer = await generatePackingListDocx(order, company);
@@ -798,18 +921,20 @@ app.get('/api/export/docx/packing-list/:id', async (req, res) => {
 // 7. Export Commercial Invoice as PDF (.pdf)
 app.get('/api/export/pdf/invoice/:id', async (req, res) => {
   try {
-    const orders = await getAllOrders();
+    const order = await findAnyOrder(req.params.id);
     const company = await getCompanyInfo();
-    const order = orders.find(o => o.id === req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
-    const buffer = await generateInvoicePdfBuffer(order, company);
+    const layout = String(req.query.layout || 'form').toLowerCase();
+    const copies = layout === 'landscape-2up' || layout === '2up' || layout === 'landscape' ? 2 : 1;
+    const buffer = await generateInvoicePdfBuffer(order, company, { copies });
     const invoiceNo = formatInvoiceNumber(order).replace(/\s+/g, '_');
+    const layoutSuffix = copies === 2 ? '_Landscape_2up' : '';
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `${req.query.inline ? 'inline' : 'attachment'}; filename="${invoiceNo}_Invoice.pdf"`
+      `${req.query.inline ? 'inline' : 'attachment'}; filename="${invoiceNo}_Invoice${layoutSuffix}.pdf"`
     );
 
     res.send(buffer);
@@ -822,9 +947,8 @@ app.get('/api/export/pdf/invoice/:id', async (req, res) => {
 // 8. Export Commercial Invoice as Microsoft Word (.docx)
 app.get('/api/export/docx/invoice/:id', async (req, res) => {
   try {
-    const orders = await getAllOrders();
+    const order = await findAnyOrder(req.params.id);
     const company = await getCompanyInfo();
-    const order = orders.find(o => o.id === req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
     const buffer = await generateInvoiceDocx(order, company);

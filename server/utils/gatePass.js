@@ -49,6 +49,8 @@ function getGatePassMeta(order) {
     date: order?.gatePassDate || order?.orderDate || new Date().toISOString().split('T')[0],
     vehicleNo: text(order?.gatePassVehicle),
     driverName: text(order?.gatePassDriver),
+    driverCell: text(order?.gatePassDriverCell),
+    through: text(order?.gatePassThrough),
     destination: text(order?.gatePassDestination || order?.dispatchCity, 'Faisalabad'),
     purpose: text(order?.gatePassPurpose, 'Dispatch of finished goods'),
     remarks: text(order?.gatePassRemarks),
@@ -61,10 +63,10 @@ function getGatePassMeta(order) {
     companyName: text(order?.gatePassCompanyName),
     companyTagline: text(order?.gatePassCompanyTagline),
     companyAddress: text(order?.gatePassCompanyAddress),
-    preparedBy: text(order?.gatePassPreparedBy, 'Prepared by Merchandiser'),
-    gateKeeper: text(order?.gatePassGateKeeper, 'Gate Keeper'),
-    receivedBy: text(order?.gatePassReceivedBy, 'Driver / Received by'),
-    authorizedBy: text(order?.gatePassAuthorizedBy, 'Authorized Signature'),
+    preparedBy: text(order?.gatePassPreparedBy, 'Prepared by:'),
+    gateKeeper: text(order?.gatePassGateKeeper, 'Approved by:'),
+    receivedBy: text(order?.gatePassReceivedBy, 'Received by:'),
+    authorizedBy: text(order?.gatePassAuthorizedBy, 'Approved by:'),
     footerNote: text(order?.gatePassFooterNote, 'This gate pass is valid for the dispatch described above only.'),
 
     items: getGatePassItems(order)

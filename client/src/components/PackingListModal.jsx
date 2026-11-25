@@ -1,12 +1,13 @@
 import React from 'react';
 import { Package } from 'lucide-react';
 import DocumentEditorModal from './DocumentEditorModal';
+import DocumentItemsEditor from './DocumentItemsEditor';
 import PackingListDocument from './PackingListDocument';
 import { getPackingMeta, getPackingTotals } from '../utils/packingList';
 
 const FIELDS = [
   { key: 'packingListNo', label: 'Packing List #', placeholder: 'PL-001' },
-  { key: 'packingDate', label: 'Packing Date', type: 'date' },
+  { key: 'packingDate', label: 'Packing Date (use ka din)', type: 'date', hint: 'Jis din packing list use ho woh date khud set karein.' },
   {
     key: 'packingNetWeight',
     label: 'Net Weight / Carton (kg)',
@@ -63,12 +64,28 @@ const buildDefaults = (order) => {
     packingCartonWidth: order?.packingCartonWidth || '',
     packingCartonHeight: order?.packingCartonHeight || '',
     packingCbm: order?.packingCbm || '',
-    packingNotes: order?.packingNotes || ''
+    packingNotes: order?.packingNotes || '',
+    ...(order?.isStandalone
+      ? {
+          customer: order.customer || '',
+          orderNumber: order.orderNumber || '',
+          items: order.items || []
+        }
+      : {})
   };
 };
 
 export default function PackingListModal(props) {
   const totals = getPackingTotals(props.order);
+  const isStandalone = Boolean(props.order?.isStandalone);
+
+  const fields = isStandalone
+    ? [
+        { key: 'customer', section: 'Standalone Document', label: 'Customer / Buyer', placeholder: 'Walk-in Customer' },
+        { key: 'orderNumber', section: 'Standalone Document', label: 'Order / Reference #', placeholder: 'MANUAL-001' },
+        ...FIELDS
+      ]
+    : FIELDS;
 
   return (
     <DocumentEditorModal
@@ -76,13 +93,24 @@ export default function PackingListModal(props) {
       title="Packing List"
       subtitle={`${totals.totalCartons.toLocaleString()} cartons • ${totals.totalPieces.toLocaleString()} pcs`}
       icon={Package}
-      fields={FIELDS}
+      fields={fields}
       buildDefaults={buildDefaults}
       Preview={PackingListDocument}
       pdfEndpoint="/export/pdf/packing-list"
       docxEndpoint="/export/docx/packing-list"
       summaryText={`${totals.totalCartons.toLocaleString()} cartons • ${totals.totalPieces.toLocaleString()} pcs • ${totals.groups.length} style group(s)`}
-      helpText="Weight / CBM khali chhoren to document blanks dikhata hai. Totals cartons se auto calculate hote hain."
+      helpText={
+        isStandalone
+          ? 'Yeh document kisi order se linked nahi. Party name, items, cartons aur weights yahan se edit karein.'
+          : 'Weight / CBM khali chhoren to document blanks dikhata hai. Totals cartons se auto calculate hote hain.'
+      }
+      renderExtra={isStandalone ? ({ form, update }) => (
+        <DocumentItemsEditor
+          mode="packing"
+          items={form.items}
+          onChange={items => update('items', items)}
+        />
+      ) : undefined}
     />
   );
 }

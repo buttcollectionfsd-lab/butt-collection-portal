@@ -16,7 +16,7 @@ const {
   HeadingLevel,
   ShadingType
 } = require('docx');
-const { getGatePassMeta, getGatePassTotals } = require('../utils/gatePass');
+const { getGatePassMeta } = require('../utils/gatePass');
 const { getPackingTotals } = require('../utils/packingList');
 const { getInvoiceMeta } = require('../utils/invoice');
 const { getCompanyAddress } = require('../utils/companyInfo');
@@ -312,38 +312,174 @@ async function generateOrderDocx(order, company) {
  */
 async function generateGatePassDocx(order, company) {
   const meta = getGatePassMeta(order);
-  const totals = getGatePassTotals(order);
 
-  const labelCell = (text) => new TableCell({
-    shading: { fill: 'F1F5F9', type: ShadingType.CLEAR },
-    width: { size: 18, type: WidthType.PERCENTAGE },
+  const noBorder = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+  const thin = { style: BorderStyle.SINGLE, size: 4, color: '000000' };
+  const medium = { style: BorderStyle.SINGLE, size: 14, color: '000000' };
+  const allNo = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder };
+
+  const cell = (text, { width, bold = false, size = 18, align = AlignmentType.LEFT, borders = allNo, color = '000000', spacing = {} } = {}) => new TableCell({
+    width: width ? { size: width, type: WidthType.PERCENTAGE } : undefined,
+    borders,
     children: [new Paragraph({
-      children: [new TextRun({ text, bold: true, size: 18, color: '334155' })]
+      alignment: align,
+      spacing: { before: 20, after: 20, ...spacing },
+      children: [new TextRun({ text: text ?? '', bold, size, color })]
     })]
   });
 
-  const valueCell = (text) => new TableCell({
-    width: { size: 32, type: WidthType.PERCENTAGE },
-    children: [new Paragraph({
-      children: [new TextRun({ text: text || '-', size: 18, color: '0F172A' })]
-    })]
-  });
+  const companyName = String(meta.companyName || company?.name || 'BUTT COLLECTION').toUpperCase();
+  const taglineParts = String(
+    meta.companyTagline
+      || `${company?.tagline || 'Quality Apparel Manufacturing & Export'} | ${company?.city || 'Faisalabad'}, ${company?.country || 'Pakistan'}`
+  ).split('|').map(part => part.trim());
+  const tagline = taglineParts[0] || '';
+  const cityLine = taglineParts.slice(1).join(', ')
+    || `${company?.city || 'Faisalabad'}, ${company?.country || 'Pakistan'}`;
+  const companyAddress = meta.companyAddress || getCompanyAddress(company);
 
-  const metaRow = (leftLabel, leftValue, rightLabel, rightValue) => new TableRow({
-    children: [
-      labelCell(leftLabel),
-      valueCell(leftValue),
-      labelCell(rightLabel),
-      valueCell(rightValue)
+  // ---- Header: company block + GATE PASS box ----
+  const gateBox = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({
+            borders: { top: medium, bottom: thin, left: medium, right: medium },
+            children: [new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 20, after: 20 },
+              children: [new TextRun({ text: (meta.title || 'GATE PASS').toUpperCase(), bold: true, size: 22 })]
+            })]
+          })
+        ]
+      }),
+      new TableRow({
+        children: [
+          new TableCell({
+            borders: { top: noBorder, bottom: thin, left: medium, right: medium },
+            children: [
+              new Paragraph({
+                spacing: { before: 20, after: 0 },
+                children: [
+                  new TextRun({ text: 'OUTWARD', bold: true, size: 18 }),
+                  new TextRun({ text: '\t☒', size: 18 })
+                ],
+                tabStops: [{ type: 'right', position: 2500 }]
+              }),
+              new Paragraph({
+                spacing: { before: 0, after: 20 },
+                children: [
+                  new TextRun({ text: 'RETURNABLE', bold: true, size: 18 }),
+                  new TextRun({ text: '\t☐', size: 18 })
+                ],
+                tabStops: [{ type: 'right', position: 2500 }]
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        children: [
+          new TableCell({
+            borders: { top: noBorder, bottom: medium, left: medium, right: medium },
+            children: [new Paragraph({
+              spacing: { before: 20, after: 20 },
+              children: [
+                new TextRun({ text: 'SR. NO.', bold: true, size: 18 }),
+                new TextRun({ text: `\t${meta.no}`, size: 18, bold: true })
+              ],
+              tabStops: [{ type: 'right', position: 2500 }]
+            })]
+          })
+        ]
+      })
     ]
   });
 
-  const headerCell = (text, alignment, width) => new TableCell({
-    shading: { fill: '1E3A8A', type: ShadingType.CLEAR },
-    width: { size: width, type: WidthType.PERCENTAGE },
+  const headerTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({
+            borders: allNo,
+            width: { size: 63, type: WidthType.PERCENTAGE },
+            children: [
+              new Paragraph({
+                spacing: { after: 40 },
+                children: [new TextRun({ text: companyName, bold: true, size: 40 })]
+              }),
+              new Paragraph({ spacing: { after: 0 }, children: [new TextRun({ text: tagline, size: 18 })] }),
+              new Paragraph({ spacing: { after: 0 }, children: [new TextRun({ text: cityLine, size: 18 })] }),
+              new Paragraph({ spacing: { after: 0 }, children: [new TextRun({ text: companyAddress, size: 13 })] })
+            ]
+          }),
+          new TableCell({
+            borders: allNo,
+            width: { size: 37, type: WidthType.PERCENTAGE },
+            children: [gateBox]
+          })
+        ]
+      })
+    ]
+  });
+
+  // Thick rule under the header
+  const headerRule = new Paragraph({
+    spacing: { before: 80, after: 160 },
+    border: { bottom: { style: BorderStyle.SINGLE, size: 22, color: '000000' } },
+    children: [new TextRun({ text: '' })]
+  });
+
+  // ---- Party / transport fields with underlines ----
+  const fieldRow = (leftLabel, leftValue, rightLabel, rightValue) => new TableRow({
+    children: [
+      cell(leftLabel, { width: 13, bold: true, size: 18 }),
+      new TableCell({
+        width: { size: 37, type: WidthType.PERCENTAGE },
+        borders: { top: noBorder, bottom: thin, left: noBorder, right: noBorder },
+        children: [new Paragraph({
+          spacing: { before: 20, after: 20 },
+          children: [new TextRun({ text: leftValue || '', bold: true, size: 18 })]
+        })]
+      }),
+      cell(rightLabel, { width: 16, bold: true, size: 18 }),
+      new TableCell({
+        width: { size: 34, type: WidthType.PERCENTAGE },
+        borders: { top: noBorder, bottom: thin, left: noBorder, right: noBorder },
+        children: [new Paragraph({
+          spacing: { before: 20, after: 20 },
+          children: [new TextRun({ text: rightValue || '', bold: true, size: 18 })]
+        })]
+      })
+    ]
+  });
+
+  const fieldsTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [
+      fieldRow('Party Name:', meta.customer, 'Date:', meta.date),
+      fieldRow('Through Mr.:', meta.through, 'Vehicle #:', meta.vehicleNo),
+      fieldRow('Driver Name:', meta.driverName, 'Driver Cell No.:', meta.driverCell)
+    ]
+  });
+
+  // ---- 12-row dispatch table ----
+  const colWidths = [6, 50, 11, 14, 19];
+
+  const headerCell = (text, index) => new TableCell({
+    width: { size: colWidths[index], type: WidthType.PERCENTAGE },
+    borders: {
+      top: medium,
+      bottom: medium,
+      left: index === 0 ? medium : thin,
+      right: index === 4 ? medium : thin
+    },
     children: [new Paragraph({
-      alignment,
-      children: [new TextRun({ text, bold: true, color: 'FFFFFF', size: 16 })]
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 30, after: 30 },
+      children: [new TextRun({ text, bold: true, size: 18 })]
     })]
   });
 
@@ -351,93 +487,114 @@ async function generateGatePassDocx(order, company) {
     new TableRow({
       tableHeader: true,
       children: [
-        headerCell('Style / Description', AlignmentType.LEFT, 34),
-        headerCell('GSM', AlignmentType.CENTER, 10),
-        headerCell('Color', AlignmentType.LEFT, 16),
-        headerCell('Cartons', AlignmentType.RIGHT, 12),
-        headerCell('Qty (Pcs)', AlignmentType.RIGHT, 12),
-        headerCell('Remarks', AlignmentType.LEFT, 16)
+        headerCell('SR', 0),
+        headerCell('DESCRIPTION', 1),
+        headerCell('UNIT', 2),
+        headerCell('QUANTITY', 3),
+        headerCell('REMARKS', 4)
       ]
     })
   ];
 
-  const items = meta.items;
+  const items = Array.isArray(meta.items) ? meta.items : [];
+  const rowCount = Math.max(12, items.length);
 
-  items.forEach((item, index) => {
-    const fill = index % 2 === 0 ? 'F8FAFC' : 'FFFFFF';
-    const cell = (children, alignment, width) => new TableCell({
-      shading: { fill, type: ShadingType.CLEAR },
-      width: { size: width, type: WidthType.PERCENTAGE },
-      children: [new Paragraph({ alignment, children })]
+  for (let index = 0; index < rowCount; index += 1) {
+    const item = items[index];
+    const description = item
+      ? [
+        item.style || '',
+        item.gsm && !String(item.style || '').includes(String(item.gsm)) ? `${item.gsm} GSM` : '',
+        item.color || ''
+      ].filter(Boolean).join(' - ')
+      : '';
+    const remarks = item
+      ? [
+        Number(item.cartons) ? `${Number(item.cartons)} CTN` : '',
+        item.remarks || ''
+      ].filter(Boolean).join(' | ')
+      : '';
+
+    const bodyCell = (text, colIndex, alignment = AlignmentType.LEFT, bold = false, size = 16) => new TableCell({
+      width: { size: colWidths[colIndex], type: WidthType.PERCENTAGE },
+      borders: {
+        top: noBorder,
+        bottom: index === rowCount - 1 ? medium : thin,
+        left: colIndex === 0 ? medium : thin,
+        right: colIndex === 4 ? medium : thin
+      },
+      children: [new Paragraph({
+        alignment,
+        spacing: { before: 40, after: 40 },
+        children: [new TextRun({ text, bold, size })]
+      })]
     });
 
     itemRows.push(new TableRow({
       children: [
-        cell([new TextRun({ text: item.style || '-', bold: true, size: 17 })], AlignmentType.LEFT, 34),
-        cell([new TextRun({ text: item.gsm || '-', size: 17 })], AlignmentType.CENTER, 10),
-        cell([new TextRun({ text: item.color || 'Assorted', size: 17 })], AlignmentType.LEFT, 16),
-        cell([new TextRun({ text: String(Number(item.cartons) || '-'), size: 17 })], AlignmentType.RIGHT, 12),
-        cell([new TextRun({ text: String(Number(item.qty) || 0), size: 17 })], AlignmentType.RIGHT, 12),
-        cell([new TextRun({ text: item.remarks || '-', size: 17 })], AlignmentType.LEFT, 16)
+        bodyCell(String(index + 1), 0, AlignmentType.CENTER),
+        bodyCell(description, 1),
+        bodyCell(item ? 'PCS' : '', 2, AlignmentType.CENTER),
+        bodyCell(item ? Number(item.qty || 0).toLocaleString() : '', 3, AlignmentType.RIGHT, true),
+        bodyCell(remarks, 4, AlignmentType.LEFT, false, 14)
       ]
     }));
-  });
+  }
+
+  const totalQty = items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
 
   itemRows.push(new TableRow({
     children: [
       new TableCell({
         columnSpan: 3,
-        shading: { fill: 'E2E8F0', type: ShadingType.CLEAR },
-        children: [new Paragraph({
-          children: [new TextRun({ text: 'TOTAL', bold: true, size: 18, color: '0F172A' })]
-        })]
-      }),
-      new TableCell({
-        shading: { fill: 'E2E8F0', type: ShadingType.CLEAR },
+        borders: { top: medium, bottom: medium, left: medium, right: thin },
         children: [new Paragraph({
           alignment: AlignmentType.RIGHT,
-          children: [new TextRun({ text: String(totals.cartons || '-'), bold: true, size: 18 })]
+          spacing: { before: 60, after: 60 },
+          children: [new TextRun({ text: 'Total', bold: true, size: 20 })]
         })]
       }),
       new TableCell({
-        shading: { fill: 'E2E8F0', type: ShadingType.CLEAR },
+        width: { size: colWidths[3], type: WidthType.PERCENTAGE },
+        borders: { top: medium, bottom: medium, left: thin, right: thin },
         children: [new Paragraph({
           alignment: AlignmentType.RIGHT,
-          children: [new TextRun({ text: totals.pieces.toLocaleString(), bold: true, size: 18 })]
+          spacing: { before: 60, after: 60 },
+          children: [new TextRun({ text: totalQty.toLocaleString(), bold: true, size: 18 })]
         })]
       }),
       new TableCell({
-        shading: { fill: 'E2E8F0', type: ShadingType.CLEAR },
+        width: { size: colWidths[4], type: WidthType.PERCENTAGE },
+        borders: { top: medium, bottom: medium, left: thin, right: medium },
         children: [new Paragraph({ children: [new TextRun({ text: '' })] })]
       })
     ]
   }));
 
-  const signatureBorders = {
-    top: { style: BorderStyle.SINGLE, size: 6, color: '94A3B8' },
-    bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-    left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-    right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }
-  };
+  const itemsTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: itemRows
+  });
 
-  const signatureLabels = [
-    meta.preparedBy,
-    meta.gateKeeper,
-    meta.receivedBy,
-    meta.authorizedBy
-  ];
+  const refs = [
+    meta.orderNo ? `Order #: ${meta.orderNo}` : '',
+    meta.destination ? `Destination: ${meta.destination}` : '',
+    meta.purpose ? `Purpose: ${meta.purpose}` : '',
+    meta.remarks ? `Remarks: ${meta.remarks}` : '',
+    meta.generatedOn ? `Generated: ${meta.generatedOn}` : ''
+  ].filter(Boolean).join('   •   ');
 
   const signatureTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     rows: [
       new TableRow({
-        children: signatureLabels.map(label => new TableCell({
-          borders: signatureBorders,
-          width: { size: 25, type: WidthType.PERCENTAGE },
+        children: [meta.preparedBy, meta.authorizedBy, meta.receivedBy].map(label => new TableCell({
+          borders: { top: thin, bottom: noBorder, left: noBorder, right: noBorder },
+          width: { size: 33, type: WidthType.PERCENTAGE },
           children: [new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { before: 120 },
-            children: [new TextRun({ text: label, size: 16, color: '475569' })]
+            spacing: { before: 80, after: 0 },
+            children: [new TextRun({ text: label || '', bold: true, size: 18 })]
           })]
         }))
       })
@@ -447,111 +604,25 @@ async function generateGatePassDocx(order, company) {
   const doc = new Document({
     sections: [
       {
-        properties: {},
+        properties: {
+          page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } }
+        },
         children: [
+          headerTable,
+          headerRule,
+          fieldsTable,
+          new Paragraph({ spacing: { before: 120, after: 0 }, children: [new TextRun({ text: '' })] }),
+          itemsTable,
           new Paragraph({
-            alignment: AlignmentType.CENTER,
-            children: [new TextRun({
-              text: meta.companyName || company?.name || 'BUTT COLLECTION',
-              bold: true,
-              size: 32,
-              color: '1E3A8A'
-            })]
+            spacing: { before: 60, after: 0 },
+            children: [new TextRun({ text: refs, size: 14, color: '333333' })]
           }),
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            children: [new TextRun({
-              text: meta.companyTagline
-                || `${company?.tagline || 'Quality Apparel Manufacturing & Export'} | Faisalabad, Pakistan`,
-              size: 18,
-              color: '64748B'
-            })]
-          }),
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            children: [new TextRun({
-              text: meta.companyAddress || getCompanyAddress(company),
-              size: 14,
-              color: '64748B'
-            })]
-          }),
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { before: 160, after: 40 },
-            children: [new TextRun({
-              text: meta.title,
-              bold: true,
-              size: 30,
-              color: '1E3A8A'
-            })]
-          }),
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { after: 160 },
-            children: [new TextRun({
-              text: `Generated: ${meta.generatedOn}`,
-              size: 16,
-              color: '64748B'
-            })]
-          }),
-
-          new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: [
-              metaRow('Gate Pass #', meta.no, 'Vehicle No.', meta.vehicleNo),
-              metaRow('Date', meta.date, 'Driver Name', meta.driverName),
-              metaRow('Customer / Buyer', meta.customer, 'Destination', meta.destination),
-              metaRow('Order #', meta.orderNo, 'Purpose', meta.purpose)
-            ]
-          }),
-
-          new Paragraph({
-            spacing: { before: 240, after: 80 },
-            children: [new TextRun({
-              text: 'DISPATCH ITEMS',
-              bold: true,
-              size: 20,
-              color: '334155'
-            })]
-          }),
-
-          new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: itemRows
-          }),
-
-          new Paragraph({
-            spacing: { before: 200 },
-            children: [
-              new TextRun({ text: 'Total Pieces: ', bold: true, size: 18 }),
-              new TextRun({ text: totals.pieces.toLocaleString(), size: 18 })
-            ]
-          }),
-          new Paragraph({
-            spacing: { after: 80 },
-            children: [
-              new TextRun({ text: 'Total Cartons: ', bold: true, size: 18 }),
-              new TextRun({ text: totals.cartons ? totals.cartons.toLocaleString() : '-', size: 18 })
-            ]
-          }),
-          new Paragraph({
-            spacing: { after: 300 },
-            children: [
-              new TextRun({ text: 'Remarks: ', bold: true, size: 18 }),
-              new TextRun({ text: meta.remarks || '-', size: 18 })
-            ]
-          }),
-
+          new Paragraph({ spacing: { before: 500 }, children: [new TextRun({ text: '' })] }),
           signatureTable,
-
           new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { before: 240 },
-            children: [new TextRun({
-              text: meta.footerNote,
-              size: 14,
-              color: '94A3B8'
-            })]
+            spacing: { before: 160 },
+            children: [new TextRun({ text: meta.footerNote || '', size: 14, color: '777777' })]
           })
         ]
       }

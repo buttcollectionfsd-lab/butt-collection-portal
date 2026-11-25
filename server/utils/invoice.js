@@ -15,7 +15,9 @@ function formatInvoiceNumber(order) {
 
 function getInvoiceMeta(order) {
   const total = Number(order?.totalAmount) || 0;
-  const received = Number(order?.amountReceived) || 0;
+  const received = order?.invoiceReceived != null
+    ? Number(order.invoiceReceived) || 0
+    : Number(order?.amountReceived) || 0;
   const balance = Math.max(0, total - received);
 
   return {
@@ -27,7 +29,7 @@ function getInvoiceMeta(order) {
     total,
     received,
     balance,
-    paymentStatus: balance <= 0 ? 'PAID' : received > 0 ? 'PARTIAL' : 'UNPAID'
+    paymentStatus: total <= 0 ? 'UNPAID' : balance <= 0 ? 'PAID' : received > 0 ? 'PARTIAL' : 'UNPAID'
   };
 }
 

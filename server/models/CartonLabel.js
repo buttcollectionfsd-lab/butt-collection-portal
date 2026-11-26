@@ -13,6 +13,9 @@ const LabelRowSchema = new mongoose.Schema({
 const CartonLabelSchema = new mongoose.Schema({
   buyer: { type: String, required: true, trim: true },
   style: { type: String, required: true, trim: true },
+  styleSuffix: { type: String, default: 'SET' },
+  masterLabel: { type: String, default: 'MASTER' },
+  masterValue: { type: String, default: '' },
   description: { type: String, default: 'PREMIUM GARMENT SET' },
   cartonNo: { type: String, default: '1 OF 4' },
   totalCartons: { type: Number, default: 4 },

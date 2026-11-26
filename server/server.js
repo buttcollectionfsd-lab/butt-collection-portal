@@ -18,7 +18,8 @@ const {
   generateGatePassPdfBuffer,
   generateGatePassFormPdfBuffer,
   generatePackingListPdfBuffer,
-  generateInvoicePdfBuffer
+  generateInvoicePdfBuffer,
+  generateBankDetailsPdfBuffer
 } = require('./services/pdfService');
 const {
   generateOrderDocx,
@@ -1021,6 +1022,29 @@ app.get('/api/export/pdf/label/:id', async (req, res) => {
     res.send(buffer);
   } catch (err) {
     console.error('Error generating Label PDF:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 10. Bank / Payment Details one-pager (client ko bhejne ke liye)
+app.get('/api/export/pdf/bank-details', async (req, res) => {
+  try {
+    const company = await getCompanyInfo();
+    const buffer = await generateBankDetailsPdfBuffer(company, {
+      ref: req.query.ref,
+      amount: req.query.amount,
+      currency: req.query.currency
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `${req.query.inline ? 'inline' : 'attachment'}; filename="Butt_Collection_Bank_Payment_Details.pdf"`
+    );
+
+    res.send(buffer);
+  } catch (err) {
+    console.error('Error generating Bank Details PDF:', err);
     res.status(500).json({ error: err.message });
   }
 });

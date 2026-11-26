@@ -15,7 +15,16 @@ const INITIAL_DATA = {
     phone: "+92 300 1234567",
     currency: "£",
     currencyCode: "GBP",
-    tagline: "Quality Apparel Manufacturing & Export"
+    tagline: "Quality Apparel Manufacturing & Export",
+    bank: {
+      accountTitle: "FARHAN FAISAL",
+      bankName: "Meezan Bank",
+      accountNo: "04060106360449",
+      iban: "PK20MEZN0004060106360449",
+      branch: "Dijkot Road",
+      city: "Faisalabad",
+      swift: ""
+    }
   },
   orders: [
     {

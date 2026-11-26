@@ -11,6 +11,7 @@ const { getGatePassMeta, getGatePassTotals, formatGatePassDate, formatGatePassWe
 const { getPackingTotals } = require('../utils/packingList');
 const { getInvoiceMeta } = require('../utils/invoice');
 const { getCompanyAddress } = require('../utils/companyInfo');
+const { getBankDetails } = require('../utils/bankDetails');
 
 function generateOrderPdfBuffer(order, company) {
   return new Promise((resolve, reject) => {
@@ -196,14 +197,46 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
 
       const totalSetsNum = label.setsPerCarton || perCartonSum || 30;
 
+      // Style title ka aakhri lafz (SET / SUIT / PCS) label record se aata hai.
+      // Purane records ke liye default 'SET'; khali chhora jaye to title
+      // mein kuch nahi judta (exactly jo type kiya wohi chhapta hai).
+      const suffixRaw = label.styleSuffix;
+      const styleSuffix = (suffixRaw === undefined || suffixRaw === null ? 'SET' : String(suffixRaw)).trim().toUpperCase();
+      const styleBase = String(label.style || '').trim().toUpperCase();
+      const styleHasSuffix = Boolean(styleSuffix)
+        && new RegExp(`(^|\\s)${styleSuffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`).test(styleBase);
+      const styleDisplay = styleBase
+        ? (styleHasSuffix ? styleBase : [styleBase, styleSuffix].filter(Boolean).join(' '))
+        : ['ALOO7', styleSuffix].filter(Boolean).join(' ');
+      const unitPlural = styleSuffix ? `${styleSuffix}S` : '';
+      const setsText = (count) => `${count}${unitPlural ? ` ${unitPlural}` : ''}`;
+
+      // Master line optional hai: value ho to MASTER box/line print hoti hai,
+      // khali ho to kuch bhi nahi chhapta.
+      const masterLabelText = String(label.masterLabel === undefined || label.masterLabel === null ? 'MASTER' : label.masterLabel).trim();
+      const masterValueText = String(label.masterValue || '').trim();
+      const hasMaster = Boolean(masterValueText);
+      const masterText = masterLabelText ? `${masterLabelText}: ${masterValueText}` : masterValueText;
+
+      // Colour names (CHARCOAL, LIGHT GREY...) cell se bahar na niklen:
+      // text ko cell ki width mein fit hone tak chhota karte hain, wrap nahi hota.
+      const fitColorSize = (text, maxWidth, startSize, minSize = 9) => {
+        let size = Math.max(startSize, minSize);
+        doc.font('Helvetica-Bold').fontSize(size);
+        while (size > minSize && doc.widthOfString(String(text)) > maxWidth) {
+          size -= 1;
+          doc.fontSize(size);
+        }
+        return size;
+      };
+
       // -------------------------------------------------------------
       // TEMPLATE 1: SCREENSHOT BOLD (DEFAULT)
       // Exactly matches the user's uploaded screenshot!
       // Double border, SP IMPORTS, line, STYLE SET, line, table,
       // bottom left TOTAL XX SETS box, bottom right CTN # box.
       // -------------------------------------------------------------
-      if (templateId === 'screenshot_bold') {
-        // Outer Double Border
+      if (templateId === 'screenshot_bold') {        // Outer Double Border
         doc.rect(35, 35, 525, 770).lineWidth(4.5).strokeColor('#000000').stroke();
         doc.rect(42, 42, 511, 756).lineWidth(1.5).strokeColor('#000000').stroke();
 
@@ -215,7 +248,7 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
         doc.lineWidth(2.5).strokeColor('#000000').moveTo(70, 115).lineTo(525, 115).stroke();
 
         // Style Title: e.g. ALOO7 SET
-        const styleText = label.style ? (label.style.toUpperCase().endsWith('SET') ? label.style.toUpperCase() : `${label.style.toUpperCase()} SET`) : 'ALOO7 SET';
+        const styleText = styleDisplay;
         doc.fontSize(36).font('Helvetica-Bold')
           .text(styleText, 42, 132, { align: 'center', width: 511 });
 
@@ -237,8 +270,20 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
           total: 65
         };
 
-        // Table Header
+        // Page bhar ke design: A4 ki height ke hisaab se table rows aur
+        // bottom boxes stretch hote hain taake neeche khali jagah na bache.
         const headerH = 48;
+        const innerBottom = 782;   // inner border (798) se 16pt pehle
+        const boxGap = 28;
+        const rowCount = Math.max(rows.length, 1);
+        const rowH = Math.min(
+          130,
+          Math.max(58, Math.floor((innerBottom - tableY - headerH - boxGap - 120) / rowCount))
+        );
+        const numberFont = rowH >= 120 ? 34 : rowH >= 90 ? 30 : rowH >= 70 ? 26 : 24;
+        const colorFont = rowH >= 90 ? 18 : 16;
+
+        // Table Header
         doc.rect(tableX, tableY, tableW, headerH).lineWidth(2).strokeColor('#000000').stroke();
 
         // Vertical lines for header
@@ -259,8 +304,7 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
 
         tableY += headerH;
 
-        // Table Data Rows
-        const rowH = 65;
+        // Table Data Rows (rowH page ki height ke hisaab se adjust hota hai)
         rows.forEach(r => {
           const rowTot = (Number(r.xs) || 0) + (Number(r.s) || 0) + (Number(r.m) || 0) + (Number(r.l) || 0) + (Number(r.xl) || 0);
           const displayTotal = r.total || rowTot;
@@ -274,36 +318,60 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
             doc.moveTo(rCurX, tableY).lineTo(rCurX, tableY + rowH).stroke();
           });
 
-          // Color Label
-          doc.fillColor('#000000').fontSize(16).font('Helvetica-Bold');
-          doc.text(r.color || 'Black', tableX, tableY + 24, { width: colW.color, align: 'center' });
+          const textOffset = (size) => tableY + (rowH - size) / 2 - 2;
+
+          // Color Label (long names cell ke andar fit ho jate hain)
+          const colorText = String(r.color || 'Black');
+          const fittedColorSize = fitColorSize(colorText, colW.color - 8, colorFont);
+          doc.fillColor('#000000').fontSize(fittedColorSize).font('Helvetica-Bold');
+          doc.text(colorText, tableX, textOffset(fittedColorSize), { width: colW.color, align: 'center', lineBreak: false });
 
           // Big Bold Numbers
-          doc.fontSize(24).font('Helvetica-Bold');
-          doc.text(String(r.xs || 0), tableX + colW.color, tableY + 20, { width: colW.xs, align: 'center' });
-          doc.text(String(r.s || 0), tableX + colW.color + colW.xs, tableY + 20, { width: colW.s, align: 'center' });
-          doc.text(String(r.m || 0), tableX + colW.color + colW.xs + colW.s, tableY + 20, { width: colW.m, align: 'center' });
-          doc.text(String(r.l || 0), tableX + colW.color + colW.xs + colW.s + colW.m, tableY + 20, { width: colW.l, align: 'center' });
-          doc.text(String(r.xl || 0), tableX + colW.color + colW.xs + colW.s + colW.m + colW.l, tableY + 20, { width: colW.xl, align: 'center' });
-          doc.text(String(displayTotal), tableX + tableW - colW.total, tableY + 20, { width: colW.total, align: 'center' });
+          doc.fontSize(numberFont).font('Helvetica-Bold');
+          const numY = textOffset(numberFont);
+          doc.text(String(r.xs || 0), tableX + colW.color, numY, { width: colW.xs, align: 'center' });
+          doc.text(String(r.s || 0), tableX + colW.color + colW.xs, numY, { width: colW.s, align: 'center' });
+          doc.text(String(r.m || 0), tableX + colW.color + colW.xs + colW.s, numY, { width: colW.m, align: 'center' });
+          doc.text(String(r.l || 0), tableX + colW.color + colW.xs + colW.s + colW.m, numY, { width: colW.l, align: 'center' });
+          doc.text(String(r.xl || 0), tableX + colW.color + colW.xs + colW.s + colW.m + colW.l, numY, { width: colW.xl, align: 'center' });
+          doc.text(String(displayTotal), tableX + tableW - colW.total, numY, { width: colW.total, align: 'center' });
 
           tableY += rowH;
         });
 
-        // Bottom Section: Two Boxes Side-by-Side (Matching Screenshot!)
-        const bottomY = tableY + 28;
-        const leftBoxW = 190;
-        const gap = 16;
-        const rightBoxX = tableX + leftBoxW + gap;
-        const rightBoxW = tableW - leftBoxW - gap;
-        const bottomH = 130;
+        // Bottom Section: TOTAL (+ optional MASTER) + right CTN # box.
+        // Boxes page ke bottom tak stretch hote hain (max 320pt).
+        const bottomYBase = tableY + boxGap;
+        let bottomY = bottomYBase;
+        let bottomH = innerBottom - bottomYBase;
+        if (bottomH > 320) {
+          bottomY = innerBottom - 320;
+          bottomH = 320;
+        }
+        const bottomCenterY = bottomY + bottomH / 2;
+        const gap = 14;
+        // TOTAL aur MASTER thore kam, CTN # ko zyada jagah.
+        const leftBoxW = hasMaster ? 144 : 176;
+        const masterBoxW = 110;
+        const masterBoxX = tableX + leftBoxW + gap;
+        const rightBoxX = tableX + leftBoxW + gap + (hasMaster ? masterBoxW + gap : 0);
+        const rightBoxW = tableX + tableW - rightBoxX;
 
         // Left Box: TOTAL / XX SETS
         doc.rect(tableX, bottomY, leftBoxW, bottomH).lineWidth(2.5).strokeColor('#000000').stroke();
         doc.fillColor('#000000').fontSize(16).font('Helvetica-Bold')
-          .text('TOTAL', tableX, bottomY + 25, { width: leftBoxW, align: 'center' });
-        doc.fontSize(28).font('Helvetica-Bold')
-          .text(`${totalSetsNum} SETS`, tableX, bottomY + 60, { width: leftBoxW, align: 'center' });
+          .text('TOTAL', tableX, bottomCenterY - 38, { width: leftBoxW, align: 'center' });
+        doc.fontSize(hasMaster ? 24 : 30).font('Helvetica-Bold')
+          .text(setsText(totalSetsNum), tableX, bottomCenterY + 2, { width: leftBoxW, align: 'center', height: 40 });
+
+        // Middle Box: MASTER (optional)
+        if (hasMaster) {
+          doc.rect(masterBoxX, bottomY, masterBoxW, bottomH).lineWidth(2.5).strokeColor('#000000').stroke();
+          doc.fillColor('#000000').fontSize(13).font('Helvetica-Bold')
+            .text(masterLabelText || 'MASTER', masterBoxX, bottomCenterY - 38, { width: masterBoxW, align: 'center', height: 20, ellipsis: true });
+          doc.fontSize(24).font('Helvetica-Bold')
+            .text(masterValueText, masterBoxX, bottomCenterY + 2, { width: masterBoxW, align: 'center', height: 40, ellipsis: true });
+        }
 
         // Right Box: CTN # Header + Blank Stamping Area
         doc.rect(rightBoxX, bottomY, rightBoxW, bottomH).lineWidth(2.5).strokeColor('#000000').stroke();
@@ -313,11 +381,7 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
         doc.fillColor('#000000').fontSize(16).font('Helvetica-Bold')
           .text('CTN #', rightBoxX, bottomY + 10, { width: rightBoxW, align: 'center' });
 
-        // Lower area inside right box is left completely blank for writing / stamping
-        if (label.cartonNo && label.cartonNo !== '1 OF 4') {
-          doc.fontSize(20).font('Helvetica-Bold')
-            .text(label.cartonNo, rightBoxX, bottomY + 65, { width: rightBoxW, align: 'center' });
-        }
+        // Lower area inside right box is always blank for writing / stamping
       }
 
       // -------------------------------------------------------------
@@ -335,7 +399,7 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
 
         // Left: DESCRIPTION / ALOO7 Set
         doc.fontSize(11).font('Helvetica-Bold').text('DESCRIPTION', 70, 125);
-        doc.fontSize(32).font('Helvetica-Bold').text(label.style || 'ALOO7 Set', 70, 145);
+        doc.fontSize(32).font('Helvetica-Bold').text(styleDisplay, 70, 145);
 
         // Right: CTN # Box
         doc.rect(360, 120, 165, 80).lineWidth(2).stroke();
@@ -375,8 +439,10 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
             doc.moveTo(rCurX, tableY).lineTo(rCurX, tableY + 60).stroke();
           });
 
-          doc.fillColor('#000000').fontSize(15).font('Helvetica-Bold')
-            .text(r.color || 'Black', tableX, tableY + 22, { width: colW.color, align: 'center' });
+          const colorText = String(r.color || 'Black');
+          const fittedColorSize = fitColorSize(colorText, colW.color - 8, 15);
+          doc.fillColor('#000000').fontSize(fittedColorSize).font('Helvetica-Bold')
+            .text(colorText, tableX, tableY + 22, { width: colW.color, align: 'center', lineBreak: false });
           doc.fontSize(22).font('Helvetica-Bold');
           doc.text(String(r.xs || 0), tableX + colW.color, tableY + 20, { width: colW.xs, align: 'center' });
           doc.text(String(r.s || 0), tableX + colW.color + colW.xs, tableY + 20, { width: colW.s, align: 'center' });
@@ -387,12 +453,17 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
           tableY += 60;
         });
 
-        // Bottom Double-Boxed TOTAL: 30 SETS
+        // Bottom Double-Boxed TOTAL: 30 SETS (+ optional MASTER line)
         const bY = tableY + 35;
-        doc.rect(tableX, bY, tableW, 70).lineWidth(3).strokeColor('#000000').stroke();
-        doc.rect(tableX + 4, bY + 4, tableW - 8, 62).lineWidth(1).strokeColor('#000000').stroke();
+        const totalBoxH = hasMaster ? 92 : 70;
+        doc.rect(tableX, bY, tableW, totalBoxH).lineWidth(3).strokeColor('#000000').stroke();
+        doc.rect(tableX + 4, bY + 4, tableW - 8, totalBoxH - 8).lineWidth(1).strokeColor('#000000').stroke();
         doc.fillColor('#000000').fontSize(26).font('Helvetica-Bold')
-          .text(`TOTAL: ${totalSetsNum} SETS`, tableX, bY + 20, { width: tableW, align: 'center' });
+          .text(`TOTAL: ${setsText(totalSetsNum)}`, tableX, bY + (hasMaster ? 16 : 20), { width: tableW, align: 'center' });
+        if (hasMaster) {
+          doc.fontSize(13).font('Helvetica-Bold')
+            .text(masterText, tableX, bY + 58, { width: tableW, align: 'center', height: 18, ellipsis: true });
+        }
       }
 
       // -------------------------------------------------------------
@@ -409,7 +480,7 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
 
         // Style Title
         doc.fontSize(11).font('Helvetica-Bold').text('STYLE', 75, 135);
-        doc.fontSize(38).font('Helvetica-Bold').text(label.style ? `${label.style} Set` : 'ALOO7 Set', 75, 155);
+        doc.fontSize(38).font('Helvetica-Bold').text(styleDisplay, 75, 155);
         doc.lineWidth(2).moveTo(75, 215).lineTo(520, 215).stroke();
 
         // Table Header
@@ -430,7 +501,10 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
         rows.forEach(r => {
           const rowTot = (Number(r.xs) || 0) + (Number(r.s) || 0) + (Number(r.m) || 0) + (Number(r.l) || 0) + (Number(r.xl) || 0);
           tY += 20;
-          doc.fillColor('#000000').fontSize(16).font('Helvetica-Bold').text(r.color || 'Black', 75, tY, { width: 90 });
+          const colorText = String(r.color || 'Black');
+          const fittedColorSize = fitColorSize(colorText, 82, 16);
+          doc.fillColor('#000000').fontSize(fittedColorSize).font('Helvetica-Bold')
+            .text(colorText, 75, tY, { width: 90, lineBreak: false });
           doc.fontSize(22).font('Helvetica-Bold');
           doc.text(String(r.xs || 0), 180, tY - 4, { width: 45, align: 'center' });
           doc.text(String(r.s || 0), 235, tY - 4, { width: 45, align: 'center' });
@@ -446,8 +520,11 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
         // Bottom Grand Total
         tY += 45;
         doc.fontSize(16).font('Helvetica-Bold').text('TOTAL', 75, tY + 10);
-        doc.fontSize(40).font('Helvetica-Bold').text(`${totalSetsNum} SETS`, 250, tY - 8, { width: 270, align: 'right' });
+        doc.fontSize(40).font('Helvetica-Bold').text(setsText(totalSetsNum), 250, tY - 8, { width: 270, align: 'right' });
         doc.lineWidth(1.5).moveTo(75, tY + 45).lineTo(520, tY + 45).stroke();
+        if (hasMaster) {
+          doc.fontSize(14).font('Helvetica-Bold').text(masterText, 75, tY + 55, { width: 445, align: 'right', height: 18, ellipsis: true });
+        }
       }
 
       // -------------------------------------------------------------
@@ -465,10 +542,10 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
         const midY = 155;
         doc.rect(60, midY, 320, 75).lineWidth(2).stroke();
         doc.fillColor('#000000').fontSize(18).font('Helvetica-Bold').text(label.buyer || 'SP IMPORTS', 75, midY + 12);
-        doc.fontSize(22).font('Helvetica-Bold').text(label.style ? `${label.style} Set` : 'ALOO7 Set', 75, midY + 38);
+        doc.fontSize(22).font('Helvetica-Bold').text(styleDisplay, 75, midY + 38);
 
         doc.rect(395, midY, 140, 75).lineWidth(2).stroke();
-        doc.fontSize(11).font('Helvetica-Bold').text('SETS', 395, midY + 12, { width: 140, align: 'center' });
+        doc.fontSize(11).font('Helvetica-Bold').text(unitPlural, 395, midY + 12, { width: 140, align: 'center' });
         doc.fontSize(32).font('Helvetica-Bold').text(String(totalSetsNum), 395, midY + 30, { width: 140, align: 'center' });
 
         // Table
@@ -503,7 +580,10 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
             doc.moveTo(rCurX, tableY).lineTo(rCurX, tableY + 60).stroke();
           });
 
-          doc.fillColor('#000000').fontSize(16).font('Helvetica-Bold').text(r.color || 'Black', tableX, tableY + 20, { width: colW.color, align: 'center' });
+          const colorText = String(r.color || 'Black');
+          const fittedColorSize = fitColorSize(colorText, colW.color - 8, 16);
+          doc.fillColor('#000000').fontSize(fittedColorSize).font('Helvetica-Bold')
+            .text(colorText, tableX, tableY + 20, { width: colW.color, align: 'center', lineBreak: false });
           doc.fontSize(22).font('Helvetica-Bold');
           doc.text(String(r.xs || 0), tableX + colW.color, tableY + 18, { width: colW.xs, align: 'center' });
           doc.text(String(r.s || 0), tableX + colW.color + colW.xs, tableY + 18, { width: colW.s, align: 'center' });
@@ -518,7 +598,11 @@ function generateCartonLabelPdfBuffer(label, company, templateId = 'screenshot_b
         const botY = tableY + 30;
         doc.rect(tableX, botY, tableW, 65).lineWidth(2).stroke();
         doc.fillColor('#000000').fontSize(26).font('Helvetica-Bold')
-          .text(`TOTAL: ${totalSetsNum} SETS`, tableX, botY + 18, { width: tableW, align: 'center' });
+          .text(`TOTAL: ${setsText(totalSetsNum)}`, tableX, botY + 18, { width: tableW, align: 'center' });
+        if (hasMaster) {
+          doc.fontSize(12).font('Helvetica-Bold')
+            .text(masterText, tableX, botY + 47, { width: tableW, align: 'center', height: 16, ellipsis: true });
+        }
       }
 
       doc.end();
@@ -1456,11 +1540,180 @@ function generateInvoicePdfBuffer(order, company, options = {}) {
   });
 }
 
+// -------------------------------------------------------------
+// BANK / PAYMENT DETAILS (client ko bhejne ke liye one-pager)
+// -------------------------------------------------------------
+function generateBankDetailsPdfBuffer(company, options = {}) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 0, size: 'A4', bufferPages: true });
+      const buffers = [];
+
+      doc.on('data', chunk => buffers.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+
+      const bank = getBankDetails(company);
+      const pageW = 595.28;
+      const marginX = 50;
+      const contentW = pageW - marginX * 2;
+      const companyName = String((company && company.name) || 'Butt Collection').trim();
+      const companyCity = String((company && company.city) || 'Faisalabad').trim();
+      const companyCountry = String((company && company.country) || 'Pakistan').trim();
+      const companyPhone = String((company && company.phone) || '').trim();
+      // Seeded demo number client ko nahi bhejna chahiye.
+      const phoneIsReal = Boolean(companyPhone) && companyPhone.replace(/[\s-]/g, '') !== '+923001234567';
+      const companyAddress = getCompanyAddress(company);
+      const tagline = String((company && company.tagline) || '').trim();
+      const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+      // ---------- Header band ----------
+      doc.rect(0, 0, pageW, 152).fill('#0f172a');
+      doc.rect(0, 152, pageW, 5).fill('#10b981');
+
+      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(27)
+        .text(companyName.toUpperCase(), marginX, 36, { width: contentW - 150, lineBreak: false });
+      if (tagline) {
+        doc.fillColor('#94a3b8').font('Helvetica').fontSize(10)
+          .text(tagline, marginX, 72, { width: contentW - 150, lineBreak: false });
+      }
+      doc.fillColor('#cbd5e1').fontSize(9)
+        .text([companyAddress, companyCity, companyCountry].filter(Boolean).join(', '), marginX, 101, { width: contentW - 190, lineBreak: false });
+
+      if (phoneIsReal) {
+        doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(10)
+          .text(companyPhone, pageW - marginX - 180, 40, { width: 180, align: 'right' });
+        doc.fillColor('#94a3b8').font('Helvetica').fontSize(8)
+          .text('PHONE / WHATSAPP', pageW - marginX - 180, 56, { width: 180, align: 'right' });
+      }
+      doc.fillColor('#94a3b8').font('Helvetica').fontSize(8)
+        .text(`ISSUED ${dateStr.toUpperCase()}`, pageW - marginX - 180, 101, { width: 180, align: 'right' });
+
+      // ---------- Title ----------
+      doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(20)
+        .text('BANK PAYMENT DETAILS', marginX, 186, { width: contentW, align: 'center' });
+      doc.fillColor('#64748b').font('Helvetica').fontSize(10)
+        .text('For invoice / order payments — please transfer to the account below', marginX, 213, { width: contentW, align: 'center' });
+
+      // ---------- Details card ----------
+      const rows = [
+        { label: 'ACCOUNT TITLE', value: bank.accountTitle, size: 15 },
+        { label: 'BANK NAME', value: bank.bankName, size: 15 },
+        { label: 'ACCOUNT NUMBER', value: bank.accountNo, size: 16 },
+        { label: 'IBAN', value: bank.iban, size: 15, highlight: true },
+        { label: 'BRANCH / CITY', value: [bank.branch, bank.city].filter(Boolean).join(', '), size: 15 }
+      ];
+      if (bank.swift) {
+        rows.push({ label: 'SWIFT CODE', value: bank.swift, size: 15 });
+      }
+
+      const cardX = marginX;
+      const cardY = 246;
+      const rowH = 52;
+      const cardH = rowH * rows.length;
+
+      doc.roundedRect(cardX, cardY, contentW, cardH, 10).lineWidth(1).strokeColor('#cbd5e1').stroke();
+
+      rows.forEach((row, i) => {
+        const y = cardY + i * rowH;
+        if (row.highlight) {
+          doc.save();
+          doc.roundedRect(cardX + 1, y + 1, contentW - 2, rowH - 2, 0).fill('#ecfdf5');
+          doc.restore();
+        } else if (i % 2 === 1) {
+          doc.save();
+          doc.rect(cardX + 1, y, contentW - 2, rowH).fill('#f8fafc');
+          doc.restore();
+        }
+        if (i > 0) {
+          doc.lineWidth(0.7).strokeColor('#e2e8f0')
+            .moveTo(cardX + 14, y).lineTo(cardX + contentW - 14, y).stroke();
+        }
+        doc.fillColor('#64748b').font('Helvetica-Bold').fontSize(7.5)
+          .text(row.label, cardX + 18, y + 12, { characterSpacing: 1.1, lineBreak: false });
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(row.size)
+          .text(row.value, cardX + 18, y + 28, { width: contentW - 36, lineBreak: false });
+      });
+
+      // ---------- Payment reference ----------
+      const refY = cardY + cardH + 18;
+      const refH = 64;
+      const refLabel = String(options.ref || '').trim();
+      const amountText = String(options.amount || '').trim();
+      const currency = String(options.currency || (company && company.currency) || '').trim();
+
+      doc.roundedRect(marginX, refY, contentW, refH, 8).lineWidth(1).strokeColor('#cbd5e1').dash(4, { space: 3 }).stroke().undash();
+      doc.fillColor('#64748b').font('Helvetica-Bold').fontSize(7.5)
+        .text('PAYMENT REFERENCE (INVOICE / ORDER NO.)', marginX + 18, refY + 13, { characterSpacing: 1, lineBreak: false });
+      if (refLabel) {
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(14)
+          .text(refLabel, marginX + 18, refY + 31, { width: contentW - 220, lineBreak: false });
+      } else {
+        doc.fillColor('#94a3b8').font('Helvetica').fontSize(10)
+          .text('Write your invoice / order number here before transferring', marginX + 18, refY + 33, { width: contentW - 220, lineBreak: false });
+      }
+      if (amountText) {
+        doc.fillColor('#64748b').font('Helvetica-Bold').fontSize(7.5)
+          .text('AMOUNT', pageW - marginX - 190, refY + 13, { width: 172, align: 'right', characterSpacing: 1 });
+        doc.fillColor('#047857').font('Helvetica-Bold').fontSize(16)
+          .text(`${currency}${amountText}`, pageW - marginX - 190, refY + 29, { width: 172, align: 'right' });
+      }
+
+      // ---------- Instructions ----------
+      const notesY = refY + refH + 26;
+      doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(9)
+        .text('IMPORTANT', marginX, notesY, { characterSpacing: 1.2 });
+
+      const notes = [
+        'Please mention your Invoice / Order No. in the payment reference so we can trace your payment.',
+        'After transferring, kindly share the payment receipt or transaction screenshot on WhatsApp.',
+        'Pay only to the account details given above. Please verify the account title before transferring.'
+      ];
+      let nY = notesY + 18;
+      notes.forEach(note => {
+        doc.circle(marginX + 3.2, nY + 4.2, 1.8).fill('#10b981');
+        doc.fillColor('#334155').font('Helvetica').fontSize(9)
+          .text(note, marginX + 14, nY, { width: contentW - 14, lineBreak: true });
+        nY += 21;
+      });
+
+      // ---------- Thank you strip ----------
+      const stripY = 704;
+      doc.roundedRect(marginX, stripY, contentW, 44, 8).fill('#0f172a');
+      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(11)
+        .text('Thank you for your business!', marginX + 18, stripY + 9, { width: contentW - 160, lineBreak: false });
+      doc.fillColor('#94a3b8').font('Helvetica').fontSize(8.5)
+        .text('Payment confirmation will be shared once the transfer is received.', marginX + 18, stripY + 25, { width: contentW - 40, lineBreak: false });
+
+      // ---------- Signature ----------
+      const signY = 782;
+      doc.lineWidth(1).strokeColor('#94a3b8').moveTo(marginX, signY).lineTo(marginX + 190, signY).stroke();
+      doc.fillColor('#64748b').font('Helvetica').fontSize(8.5)
+        .text('Authorized Signatory', marginX, signY + 6);
+      doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(10)
+        .text(companyName, pageW - marginX - 220, signY + 4, { width: 220, align: 'right' });
+      doc.fillColor('#64748b').font('Helvetica').fontSize(8.5)
+        .text(companyCity + ', ' + companyCountry, pageW - marginX - 220, signY + 19, { width: 220, align: 'right' });
+
+      // ---------- Footer ----------
+      doc.lineWidth(0.7).strokeColor('#e2e8f0').moveTo(marginX, 820).lineTo(pageW - marginX, 820).stroke();
+      doc.fillColor('#94a3b8').font('Helvetica').fontSize(7.5)
+        .text(`${companyName} — ${companyCity}, ${companyCountry}`, marginX, 826, { width: contentW / 2, lineBreak: false });
+      doc.text('BANK PAYMENT DETAILS', pageW - marginX - contentW / 2, 826, { width: contentW / 2, align: 'right', lineBreak: false });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 module.exports = {
   generateOrderPdfBuffer,
   generateCartonLabelPdfBuffer,
   generateGatePassPdfBuffer,
   generateGatePassFormPdfBuffer,
   generatePackingListPdfBuffer,
-  generateInvoicePdfBuffer
+  generateInvoicePdfBuffer,
+  generateBankDetailsPdfBuffer
 };

@@ -502,10 +502,15 @@ export default function App() {
         body: JSON.stringify(labelData)
       });
       if (!res.ok) throw new Error('Failed to save label');
+      const saved = await res.json().catch(() => null);
       await loadData(true);
-      showToast('Carton label design saved successfully!');
+      showToast(isExisting
+        ? 'Label update ho gaya!'
+        : 'Naya label save ho gaya — Saved Labels mein aa gaya!');
+      return saved;
     } catch (err) {
       alert(err.message);
+      return null;
     }
   };
 
@@ -641,6 +646,7 @@ export default function App() {
                 payments={payments}
                 orders={orders}
                 stats={stats}
+                company={company}
                 openPaymentModal={() => setIsPaymentModalOpen(true)}
                 deletePayment={handleDeletePayment}
               />

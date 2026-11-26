@@ -7,7 +7,16 @@
     "address": "Ayub Colony, Fsd, Street No 9, Center Mill Road",
     "currency": "£",
     "currencyCode": "GBP",
-    "tagline": "Quality Apparel Manufacturing & Export"
+    "tagline": "Quality Apparel Manufacturing & Export",
+    "bank": {
+      "accountTitle": "FARHAN FAISAL",
+      "bankName": "Meezan Bank",
+      "accountNo": "04060106360449",
+      "iban": "PK20MEZN0004060106360449",
+      "branch": "Dijkot Road",
+      "city": "Faisalabad",
+      "swift": ""
+    }
   },
   "orders": [
     {
@@ -470,10 +479,10 @@
       "deadline": "2026-11-25",
       "shippedOn": "",
       "status": "In Progress",
-      "totalPieces": 990,
-      "totalAmount": 7672.5,
+      "totalPieces": 780,
+      "totalAmount": 6045,
       "amountReceived": 0,
-      "balance": 7672.5,
+      "balance": 6045,
       "notes": "",
       "items": [
         {
@@ -506,9 +515,9 @@
           },
           "cartons": 0,
           "setsPerCarton": 0,
-          "qty": 198,
+          "qty": 190,
           "rate": 7.75,
-          "amount": 1534.5
+          "amount": 1472.5
         },
         {
           "style": "Alo 002 Set ",
@@ -523,31 +532,14 @@
           },
           "cartons": 0,
           "setsPerCarton": 0,
-          "qty": 198,
+          "qty": 194,
           "rate": 7.75,
-          "amount": 1534.5
+          "amount": 1503.5
         },
         {
           "style": "Alo 002 Set ",
           "gsm": "280",
           "color": "Navy Blue",
-          "sizeBreakdown": {
-            "xs": 40,
-            "s": 40,
-            "m": 40,
-            "l": 40,
-            "xl": 38
-          },
-          "cartons": 0,
-          "setsPerCarton": 0,
-          "qty": 198,
-          "rate": 7.75,
-          "amount": 1534.5
-        },
-        {
-          "style": "Alo 002 Set ",
-          "gsm": "280",
-          "color": "Maroon  ",
           "sizeBreakdown": {
             "xs": 40,
             "s": 40,
@@ -572,7 +564,8 @@
       "packingDate": "2026-11-24",
       "invoiceNo": "INV-010",
       "invoiceDate": "2026-11-24",
-      "invoiceTerms": "Payment due on receipt"
+      "invoiceTerms": "Payment due on receipt",
+      "docStatus": ""
     },
     {
       "id": "doc-1795610649526-938",
@@ -975,72 +968,48 @@
     {
       "id": "lbl-1",
       "buyer": "SP IMPORTS",
-      "style": "ALOO7",
+      "style": "AL0011 SUIT ",
       "description": "ALOO7 SET",
-      "cartonNo": "1 OF 32",
+      "cartonNo": "",
       "totalCartons": 32,
       "masterCartons": 32,
-      "setsPerCarton": 70,
-      "totalSets": 70,
+      "setsPerCarton": 30,
+      "totalSets": 30,
       "countryOfOrigin": "MADE IN PAKISTAN",
       "manufacturer": "BUTT COLLECTION FAISALABAD",
       "rows": [
         {
-          "color": "Black",
-          "xs": 3,
-          "s": 3,
-          "m": 3,
-          "l": 3,
-          "xl": 3,
-          "total": 15
+          "color": "BLACK",
+          "xs": 1,
+          "s": 1,
+          "m": 1,
+          "l": 1,
+          "xl": 1,
+          "total": 5
         },
         {
-          "color": "Gray",
-          "xs": 3,
-          "s": 3,
-          "m": 3,
-          "l": 3,
-          "xl": 3,
-          "total": 15
+          "color": "BURGUNDY",
+          "xs": 1,
+          "s": 1,
+          "m": 1,
+          "l": 1,
+          "xl": 1,
+          "total": 5
         },
         {
-          "color": "Navy",
-          "xs": 2,
-          "s": 2,
-          "m": 2,
-          "l": 2,
-          "xl": 2,
-          "total": 10
-        },
-        {
-          "color": "Navy",
-          "xs": 2,
-          "s": 2,
-          "m": 2,
-          "l": 2,
-          "xl": 2,
-          "total": 10
-        },
-        {
-          "color": "Navy",
-          "xs": 2,
-          "s": 2,
-          "m": 2,
-          "l": 2,
-          "xl": 2,
-          "total": 10
-        },
-        {
-          "color": "Navy",
-          "xs": 2,
-          "s": 2,
-          "m": 2,
-          "l": 2,
-          "xl": 2,
-          "total": 10
+          "color": "GREY",
+          "xs": 1,
+          "s": 1,
+          "m": 1,
+          "l": 1,
+          "xl": 1,
+          "total": 5
         }
       ],
-      "notes": "BOLD POSTER DESIGN - 30 SETS PER CARTON (SCREENSHOT DEFAULT)"
+      "notes": "BOLD POSTER DESIGN - 30 SETS PER CARTON (SCREENSHOT DEFAULT)",
+      "styleSuffix": "SEt",
+      "masterLabel": "MASTER",
+      "masterValue": "6"
     },
     {
       "id": "lbl-2",

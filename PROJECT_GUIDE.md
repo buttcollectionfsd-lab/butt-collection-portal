@@ -360,6 +360,10 @@ Orders store hi documents ka single source hai; standalone records `isStandalone
   - `classic_box` — description + top-right CTN# box + bottom full-width total
   - `minimal_clean` — rounded border, ruled lines
   - `top_ctn` — top CTN# box, buyer/sets dual box, table, bottom total
+
+  **Style suffix editable:** `label.styleSuffix` (default `SET`) style title ke aage ka lafz control karta hai — `SUIT`, `PCS` ya khali (to title mein kuch nahi judta, exactly jo type kiya wohi chhapta hai). Wahi suffix TOTAL wording bhi badalta hai (`70 SETS` / `70 SUITS` / sirf `70`). Preview (CartonLabelTab) aur PDF dono same logic use karte hain.
+
+  **Master line optional:** `label.masterLabel` (default `MASTER`) + `label.masterValue` (free text, e.g. `6 PCS`). Value khali = label par kuch nahi aata. `screenshot_bold` mein TOTAL aur CTN # ke beech teesra MASTER box banta hai; baaki 3 templates mein total ke neeche chhoti line.
 - `generateGatePassPdfBuffer(order, company)` — legacy blue-header gate pass (kept as fallback).
 - `generateGatePassFormPdfBuffer(order, company, { copies, blank })` — factory stationery form: company header + GATE PASS box (OUTWARD/RETURNABLE checkboxes, SR. NO.), underlined Party/Date/Through/Vehicle/Driver fields, 12-row SR · DESCRIPTION · BORA / CTN · QTY (PCS) · WEIGHT (KG/G) · REMARKS table with Total row (bora + pcs + weight totals; wazan unit `gatePassWeightUnit` = kg ya g — grams bina comma print hote hain) aur table ke neeche bold `Total Weight: 127050 g` line, dispatch reference strip, 3 signature lines. `copies: 1` → A4 portrait; `copies: 2` → A4 landscape sheet with two identical copies side by side + dashed cut guide. 12 se zyada items hon to har page 12 rows ke saath continuation sheet banti hai (2-up mein har sheet par do copies). `blank: true` → empty form for handwriting.
 - `generatePackingListPdfBuffer(order, company)` — 8-field meta, colour/size breakdown table, carton details (range, description, pcs/carton, cartons, pcs), weight & volume box (net/gross/CBM), notes, 2 signatures.
@@ -526,8 +530,12 @@ Yeh bhi karta hai: saved records mein `findArabicIssues(orders/payments/labels)`
 **Company**
 ```js
 { name: "Butt Collection", city: "Faisalabad", country: "Pakistan",
-  phone, currency: "£", currencyCode: "GBP", tagline }
+  phone, currency: "£", currencyCode: "GBP", tagline,
+  bank: { accountTitle: "FARHAN FAISAL", bankName: "Meezan Bank",
+          accountNo: "04060106360449", iban: "PK20MEZN0004060106360449",
+          branch: "Dijkot Road", city: "Faisalabad", swift: "" } }
 ```
+> `company.bank` ko Payment Ledger ka "Bank Payment Details" card aur `/api/export/pdf/bank-details` one-pager use karte hain. Values blank/placeholder phone ho to PDF mein phone nahi chhapta.`swift` blank ho to SWIFT row skip ho jati hai.
 
 ### 8.2 Seed vs live data
 
@@ -604,6 +612,10 @@ http://localhost:5000/api/export/excel
 http://localhost:5000/api/export/pdf/gate-pass/ord-1?inline=1
 http://localhost:5000/api/export/docx/packing-list/ord-1
 http://localhost:5000/api/export/pdf/invoice/ord-1?inline=1
+
+# Bank / payment details one-pager (client ko bhejne ke liye)
+http://localhost:5000/api/export/pdf/bank-details
+http://localhost:5000/api/export/pdf/bank-details?ref=ORDER%20%23005&amount=21013.50
 
 # Frontend production build
 cd client && npm run build

@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { PlusCircle, PoundSterling, Trash2, Calendar, FileText, CheckCircle2, Search } from 'lucide-react';
+import BankDetailsCard from './BankDetailsCard';
 
 export default function PaymentLedgerTab({ 
   payments, 
   orders, 
   stats, 
+  company,
   openPaymentModal, 
   deletePayment 
 }) {
@@ -68,6 +70,9 @@ export default function PaymentLedgerTab({
         </div>
 
       </div>
+
+      {/* Bank Payment Details — client ko bhejne ke liye */}
+      <BankDetailsCard company={company} />
 
       {/* Action Header & Search */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Tag, Plus, Trash2, Printer, Download, Save, Check, Layout, Sparkles, Sliders } from 'lucide-react';
 import ScriptWarning from './ScriptWarning';
+import FitColorText from './FitColorText';
 import { findArabicIssues, stripArabicFrom } from '../utils/arabicScript';
 
 export default function CartonLabelTab({ labels, saveLabel }) {
@@ -109,21 +110,91 @@ export default function CartonLabelTab({ labels, saveLabel }) {
     setSelectedLabel(prev => stripArabicFrom(prev));
   };
 
-  const handleSaveLabel = () => {
+  // Naya label: bilkul khali form (naya id), save karne par presets mein add hota hai.
+  const startNewLabel = () => {
+    setSelectedLabel({
+      id: `lbl-${Date.now()}`,
+      buyer: selectedLabel.buyer || 'SP IMPORTS',
+      style: '',
+      styleSuffix: 'SET',
+      masterLabel: 'MASTER',
+      masterValue: '',
+      cartonNo: '',
+      setsPerCarton: 30,
+      totalSets: 30,
+      rows: [{ color: 'Black', xs: 2, s: 2, m: 2, l: 2, xl: 2, total: 10 }],
+      notes: ''
+    });
+  };
+
+  const isSavedLabel = (labels || []).some(lbl => lbl.id === selectedLabel.id);
+
+  const handleSaveLabel = async () => {
     if (scriptIssues.length > 0) {
       alert('Urdu / Arabic text is not allowed on carton labels. Please fix the highlighted fields, or click "Remove Urdu text".');
       return;
     }
-    saveLabel(selectedLabel);
+    if (!String(selectedLabel.buyer || '').trim() || !String(selectedLabel.style || '').trim()) {
+      alert('Buyer / Brand Name aur Style / Model likhna zaroori hai — label ka naam inhi se banta hai.');
+      return;
+    }
+    try {
+      const saved = await saveLabel(selectedLabel);
+      if (saved && saved.id && saved.id !== selectedLabel.id) {
+        setSelectedLabel(prev => ({ ...prev, id: saved.id }));
+      }
+    } catch (_) {
+      /* saveLabel khud error dikhata hai */
+    }
   };
 
   const handlePrint = () => {
     window.print();
   };
 
-  const displayStyleTitle = selectedLabel.style 
-    ? (selectedLabel.style.toUpperCase().endsWith('SET') ? selectedLabel.style.toUpperCase() : `${selectedLabel.style.toUpperCase()} SET`) 
-    : 'ALOO7 SET';
+  // Style ke aage ka lafz (SET / SUIT / PCS) user khud likhta hai.
+  // Khali chhora jaye to title mein kuch nahi judta — bilkul jo type kiya wohi chhapta hai.
+  const suffixValue = selectedLabel.styleSuffix === undefined || selectedLabel.styleSuffix === null
+    ? 'SET'
+    : String(selectedLabel.styleSuffix);
+  const styleSuffix = suffixValue.trim().toUpperCase();
+  const styleBase = String(selectedLabel.style || '').trim();
+  const styleBaseUpper = styleBase.toUpperCase();
+  const styleHasSuffix = Boolean(styleSuffix)
+    && new RegExp(`(^|\\s)${styleSuffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`).test(styleBaseUpper);
+  const displayStyleTitle = styleBase
+    ? (styleHasSuffix ? styleBaseUpper : [styleBaseUpper, styleSuffix].filter(Boolean).join(' '))
+    : ['ALOO7', styleSuffix].filter(Boolean).join(' ');
+  const unitPlural = styleSuffix ? `${styleSuffix}S` : '';
+  const setsText = (count) => `${count}${unitPlural ? ` ${unitPlural}` : ''}`;
+
+  // Master line optional hai: value likhi jaye to label par dikhti hai,
+  // khali chhori jaye to box bilkul nahi aata (default label: MASTER).
+  const masterLabelRaw = selectedLabel.masterLabel;
+  const masterLabelText = (masterLabelRaw === undefined || masterLabelRaw === null ? 'MASTER' : String(masterLabelRaw)).trim();
+  const masterValueText = String(selectedLabel.masterValue ?? '').trim();
+  const hasMaster = Boolean(masterValueText);
+  const masterText = masterLabelText ? `${masterLabelText}: ${masterValueText}` : masterValueText;
+
+  // Live preview bhi PDF jaisi A4 height bharti hai (same proportions),
+  // taake website par wohi dikhe jo print/PDF mein aata hai.
+  const pvRows = Math.max(selectedLabel.rows.length, 1);
+  const pvRowH = Math.min(130, Math.max(58, Math.floor((782 - 225 - 48 - 28 - 120) / pvRows)));
+  const pvTableH = 48 + pvRowH * pvRows;
+  const pvTableEnd = 225 + pvTableH;
+  let pvBoxesTop = pvTableEnd + 28;
+  let pvBoxH = 782 - pvBoxesTop;
+  if (pvBoxH > 320) {
+    pvBoxesTop = 782 - 320;
+    pvBoxH = 320;
+  }
+  const PV_UNIT = 740;
+  const pvHeaderPct = ((225 - 42) / PV_UNIT) * 100;
+  const pvTablePct = (pvTableH / PV_UNIT) * 100;
+  const pvGapPct = ((pvBoxesTop - pvTableEnd) / PV_UNIT) * 100;
+  const pvBoxPct = (pvBoxH / PV_UNIT) * 100;
+  const pvTableHeadPct = (48 / pvTableH) * 100;
+  const pvNumClass = pvRowH >= 120 ? 'text-3xl' : pvRowH >= 90 ? 'text-2xl' : 'text-xl';
 
   return (
     <div className="space-y-6">
@@ -142,8 +213,8 @@ export default function CartonLabelTab({ labels, saveLabel }) {
           </div>
 
           {/* Quick Presets */}
-          <div className="flex items-center space-x-2">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Presets:</span>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Saved Labels:</span>
             {(labels || []).map(lbl => (
               <button
                 key={lbl.id}
@@ -157,6 +228,14 @@ export default function CartonLabelTab({ labels, saveLabel }) {
                 {lbl.style}
               </button>
             ))}
+            <button
+              onClick={startNewLabel}
+              className="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-extrabold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition"
+              title="Bilkul naya label banao — purane labels chhoote rahenge"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New Label</span>
+            </button>
           </div>
         </div>
 
@@ -231,35 +310,76 @@ export default function CartonLabelTab({ labels, saveLabel }) {
             </div>
             <div>
               <label className="font-semibold text-slate-700 block mb-1">Style / Model</label>
-              <input
-                type="text"
-                value={selectedLabel.style}
-                onChange={e => setSelectedLabel({ ...selectedLabel, style: e.target.value })}
-                placeholder="ALOO7"
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-blue-700 uppercase focus:ring-2 focus:ring-blue-500 focus:bg-white"
-              />
+              <div className="flex items-stretch gap-1.5">
+                <input
+                  type="text"
+                  value={selectedLabel.style}
+                  onChange={e => setSelectedLabel({ ...selectedLabel, style: e.target.value })}
+                  placeholder="ALOO7"
+                  className="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-blue-700 uppercase focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                />
+                <input
+                  type="text"
+                  value={suffixValue}
+                  onChange={e => setSelectedLabel({ ...selectedLabel, styleSuffix: e.target.value })}
+                  placeholder="SET"
+                  title="Style ke aage ka lafz (SET / SUIT / PCS)"
+                  className="w-16 shrink-0 px-1 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 uppercase text-center focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                />
+              </div>
+              <span className="mt-1 block text-[10px] font-semibold text-blue-700 leading-tight">
+                "SET" ki jagah jo chahein (SUIT / PCS) — khali chhorein to kuch nahi aayega
+              </span>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Carton No / Stamp</label>
-              <input
-                type="text"
-                value={selectedLabel.cartonNo || ''}
-                onChange={e => setSelectedLabel({ ...selectedLabel, cartonNo: e.target.value })}
-                placeholder="e.g. CTN # 1 OF 32 (or leave blank)"
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-              />
-            </div>
-            <div>
+            <div className="col-span-2">
               <label className="font-semibold text-slate-700 block mb-1">Total Sets per Carton</label>
               <input
                 type="number"
                 value={selectedLabel.setsPerCarton || 30}
                 onChange={e => setSelectedLabel({ ...selectedLabel, setsPerCarton: Number(e.target.value) || 0, totalSets: Number(e.target.value) || 0 })}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-slate-900 text-sm"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-slate-900 text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white"
               />
+              <span className="mt-1 block text-[10px] font-semibold text-slate-500">
+                CTN # box label par hamesha khali rehta hai — wahan stamp/handwriting hoti hai.
+              </span>
+            </div>
+          </div>
+
+          {/* Master (optional) — ek pack/shopper mein kitne pcs, value likhein to label par box aata hai */}
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <label className="font-bold text-amber-900 text-xs">Master / Pack (optional)</label>
+              <span className="text-[10px] font-semibold text-amber-700 text-right leading-tight">
+                {hasMaster ? 'Label par master box lagega' : 'Value khali hai — label par kuch nahi aayega'}
+              </span>
+            </div>
+            <p className="text-[10px] font-semibold text-amber-800 leading-snug">
+              Master = ek pack / shopper jis mein suit ya hoodie rakhe jate hain — likhein ke ek pack mein kitne pcs hain (jaise 6 PCS). Yeh har design ke hisaab se alag hota hai, is liye khud edit karein.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] font-semibold text-amber-900 block mb-1">Master Label</label>
+                <input
+                  type="text"
+                  value={masterLabelText}
+                  onChange={e => setSelectedLabel({ ...selectedLabel, masterLabel: e.target.value })}
+                  placeholder="MASTER"
+                  className="w-full px-2.5 py-1.5 bg-white border border-amber-200 rounded-lg font-bold text-xs uppercase text-slate-800 focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-amber-900 block mb-1">Pcs per Master / Pack</label>
+                <input
+                  type="text"
+                  value={String(selectedLabel.masterValue ?? '')}
+                  onChange={e => setSelectedLabel({ ...selectedLabel, masterValue: e.target.value })}
+                  placeholder="e.g. 6 PCS / 6 SUIT"
+                  className="w-full px-2.5 py-1.5 bg-white border border-amber-200 rounded-lg font-bold text-xs text-slate-800 focus:ring-2 focus:ring-amber-400 focus:outline-none"
+                />
+              </div>
             </div>
           </div>
 
@@ -320,14 +440,26 @@ export default function CartonLabelTab({ labels, saveLabel }) {
             </div>
           </div>
 
-          <div className="pt-3 border-t border-slate-100 flex items-center space-x-2">
-            <button
-              onClick={handleSaveLabel}
-              className="flex-1 flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl font-bold transition shadow-sm"
-            >
-              <Save className="w-4 h-4" />
-              <span>Save Label Data</span>
-            </button>
+          <div className="pt-3 border-t border-slate-100 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                onClick={handleSaveLabel}
+                className="flex-1 flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl font-bold transition shadow-sm"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isSavedLabel ? 'Save Label Data' : 'Save New Label'}</span>
+              </button>
+              <span className={`text-[10px] font-extrabold px-2 py-1 rounded-full whitespace-nowrap ${
+                isSavedLabel ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+              }`}>
+                {isSavedLabel ? 'Saved ✓' : 'New — save nahi hua'}
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-500 leading-snug">
+              {isSavedLabel
+                ? 'Isi label mein tabdeeli kar ke Save dabayein to wohi label update hoga. Alag design rakhna ho to pehle + New Label dabayein.'
+                : 'Yeh naya label hai — Save dabane par Saved Labels mein aa jayega aur PDF/export bhi isi se hoga.'}
+            </p>
           </div>
 
         </div>
@@ -356,7 +488,7 @@ export default function CartonLabelTab({ labels, saveLabel }) {
               </button>
 
               <a
-                href={`http://localhost:5000/api/export/pdf/label/${selectedLabel.id}?template=${activeTemplate}`}
+                href={`http://localhost:5000/api/export/pdf/label/${selectedLabel.id}?template=${activeTemplate}&t=${Date.now()}`}
                 download
                 className="flex items-center space-x-1.5 bg-rose-600 hover:bg-rose-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-sm transition"
               >
@@ -371,34 +503,36 @@ export default function CartonLabelTab({ labels, saveLabel }) {
           {/* Exact pixel replica of the user's uploaded screenshot!          */}
           {/* ============================================================== */}
           {activeTemplate === 'screenshot_bold' && (
-            <div className="bg-white text-black p-6 rounded-none shadow-2xl max-w-md w-full font-sans select-none border-[5px] border-black relative">
+            <div
+              className="bg-white text-black p-3 sm:p-4 rounded-none shadow-2xl max-w-md w-full font-sans select-none border-[5px] border-black"
+              style={{ aspectRatio: '595 / 842' }}
+            >
               {/* Inner thin border */}
-              <div className="border-[1.5px] border-black p-5">
-                
-                {/* Header: SP IMPORTS */}
-                <div className="text-center pt-2 pb-3">
-                  <h1 className="text-3xl font-black tracking-wide uppercase">
-                    {selectedLabel.buyer || 'SP IMPORTS'}
-                  </h1>
+              <div className="border-[1.5px] border-black h-full flex flex-col overflow-hidden px-4 sm:px-5">
+
+                {/* Header block: buyer + style (PDF jaisi proportions) */}
+                <div className="flex flex-col shrink-0" style={{ height: `${pvHeaderPct}%` }}>
+                  <div className="flex-1 flex items-center justify-center">
+                    <h1 className="text-3xl font-black tracking-wide uppercase text-center leading-none">
+                      {selectedLabel.buyer || 'SP IMPORTS'}
+                    </h1>
+                  </div>
+                  <div className="h-[2.5px] bg-black w-full shrink-0" />
+                  <div className="flex-1 flex items-center justify-center">
+                    <h2 className="text-3xl font-black tracking-wide uppercase text-center leading-none break-words">
+                      {displayStyleTitle}
+                    </h2>
+                  </div>
+                  <div className="h-[2.5px] bg-black w-full shrink-0" />
                 </div>
 
-                {/* Horizontal dividing line */}
-                <div className="h-[2.5px] bg-black w-full mb-3"></div>
-
-                {/* Style Title: ALOO7 SET */}
-                <div className="text-center py-2">
-                  <h2 className="text-3xl font-black tracking-wide uppercase">
-                    {displayStyleTitle}
-                  </h2>
-                </div>
-
-                {/* Horizontal dividing line */}
-                <div className="h-[2.5px] bg-black w-full mb-5"></div>
-
-                {/* Sizing Grid Table */}
-                <div className="border-[2px] border-black mb-5">
-                  <div className="grid grid-cols-7 border-b-[2px] border-black text-center font-black text-xs py-2 bg-white">
-                    <div className="col-span-1 border-r-[2px] border-black flex items-center justify-center text-[10px]">COLOUR</div>
+                {/* Sizing Grid Table (rows stretch to fill) */}
+                <div className="border-[2px] border-black flex flex-col shrink-0" style={{ height: `${pvTablePct}%` }}>
+                  <div
+                    className="grid border-b-[2px] border-black text-center font-black text-xs shrink-0"
+                    style={{ height: `${pvTableHeadPct}%`, gridTemplateColumns: '85fr 50fr 50fr 50fr 50fr 50fr 115fr' }}
+                  >
+                    <div className="border-r-[2px] border-black flex items-center justify-center text-[10px]">COLOUR</div>
                     <div className="border-r-[2px] border-black flex items-center justify-center">XS</div>
                     <div className="border-r-[2px] border-black flex items-center justify-center">S</div>
                     <div className="border-r-[2px] border-black flex items-center justify-center">M</div>
@@ -408,48 +542,67 @@ export default function CartonLabelTab({ labels, saveLabel }) {
                   </div>
 
                   {selectedLabel.rows.map((r, i) => (
-                    <div 
-                      key={i} 
-                      className={`grid grid-cols-7 text-center font-black ${
+                    <div
+                      key={i}
+                      style={{ gridTemplateColumns: '85fr 50fr 50fr 50fr 50fr 50fr 115fr' }}
+                      className={`grid text-center font-black flex-1 min-h-0 ${
                         i < selectedLabel.rows.length - 1 ? 'border-b-[2px] border-black' : ''
                       }`}
                     >
-                      <div className="col-span-1 border-r-[2px] border-black py-4 font-black text-sm flex items-center justify-center">
-                        {r.color}
+                      <div className="border-r-[2px] border-black flex items-center justify-center overflow-hidden [container-type:inline-size]">
+                        <FitColorText text={r.color} maxSize={13} />
                       </div>
-                      <div className="border-r-[2px] border-black py-4 text-2xl flex items-center justify-center">{r.xs}</div>
-                      <div className="border-r-[2px] border-black py-4 text-2xl flex items-center justify-center">{r.s}</div>
-                      <div className="border-r-[2px] border-black py-4 text-2xl flex items-center justify-center">{r.m}</div>
-                      <div className="border-r-[2px] border-black py-4 text-2xl flex items-center justify-center">{r.l}</div>
-                      <div className="border-r-[2px] border-black py-4 text-2xl flex items-center justify-center">{r.xl}</div>
-                      <div className="py-4 text-2xl flex items-center justify-center">{r.total}</div>
+                      <div className={`border-r-[2px] border-black ${pvNumClass} flex items-center justify-center`}>{r.xs}</div>
+                      <div className={`border-r-[2px] border-black ${pvNumClass} flex items-center justify-center`}>{r.s}</div>
+                      <div className={`border-r-[2px] border-black ${pvNumClass} flex items-center justify-center`}>{r.m}</div>
+                      <div className={`border-r-[2px] border-black ${pvNumClass} flex items-center justify-center`}>{r.l}</div>
+                      <div className={`border-r-[2px] border-black ${pvNumClass} flex items-center justify-center`}>{r.xl}</div>
+                      <div className={`${pvNumClass} flex items-center justify-center`}>{r.total}</div>
                     </div>
                   ))}
                 </div>
 
-                {/* Bottom Section: Two Adjacent Boxes (Matching Screenshot!) */}
-                <div className="grid grid-cols-12 gap-3">
-                  
-                  {/* Left Box: TOTAL / 30 SETS */}
-                  <div className="col-span-5 border-[2.5px] border-black p-4 text-center flex flex-col justify-center items-center">
+                {/* Gap table aur boxes ke darmiyan */}
+                <div className="shrink-0" style={{ height: `${pvGapPct}%` }} />
+
+                {/* Bottom Section: TOTAL / MASTER / CTN # (page ke bottom tak)
+                    Widths PDF jaisi: TOTAL 32%, MASTER 24.4%, CTN # baqi (zyada). */}
+                <div className="flex shrink-0" style={{ height: `${pvBoxPct}%`, columnGap: '3.1%' }}>
+
+                  {/* Left Box: TOTAL */}
+                  <div
+                    style={{ width: hasMaster ? '32%' : '39.1%' }}
+                    className="border-[2.5px] border-black text-center flex flex-col justify-center items-center overflow-hidden"
+                  >
                     <span className="text-sm font-black tracking-wider text-black uppercase block">
                       TOTAL
                     </span>
                     <span className="text-2xl font-black text-black tracking-tight mt-1 block">
-                      {selectedLabel.setsPerCarton || 30} SETS
+                      {setsText(selectedLabel.setsPerCarton || 30)}
                     </span>
                   </div>
 
-                  {/* Right Box: CTN # Header + Blank Handwriting Area */}
-                  <div className="col-span-7 border-[2.5px] border-black flex flex-col justify-between">
-                    <div className="border-b-[2px] border-black py-1.5 text-center font-black text-sm">
-                      CTN #
-                    </div>
-                    <div className="h-20 flex items-center justify-center p-2 text-center">
-                      <span className="font-black text-xl text-slate-800">
-                        {selectedLabel.cartonNo || ''}
+                  {/* Master Box: sirf tab jab master value likhi ho */}
+                  {hasMaster && (
+                    <div
+                      style={{ width: '24.4%' }}
+                      className="border-[2.5px] border-black text-center flex flex-col justify-center items-center overflow-hidden"
+                    >
+                      <span className="text-[10px] font-black tracking-wider text-black uppercase block leading-tight">
+                        {masterLabelText || 'MASTER'}
+                      </span>
+                      <span className="text-xl font-black text-black tracking-tight mt-1 block break-words">
+                        {masterValueText}
                       </span>
                     </div>
+                  )}
+
+                  {/* Right Box: CTN # — hamesha khali (hand stamping ke liye) */}
+                  <div className="flex-1 border-[2.5px] border-black flex flex-col overflow-hidden">
+                    <div className="border-b-[2px] border-black py-1.5 text-center font-black text-sm shrink-0">
+                      CTN #
+                    </div>
+                    <div className="flex-1" />
                   </div>
 
                 </div>
@@ -477,17 +630,17 @@ export default function CartonLabelTab({ labels, saveLabel }) {
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <span className="text-[10px] font-black uppercase text-slate-600 tracking-wider">DESCRIPTION</span>
-                    <h2 className="text-2xl font-black">{selectedLabel.style || 'ALOO7 Set'}</h2>
+                    <h2 className="text-2xl font-black">{displayStyleTitle}</h2>
                   </div>
                   <div className="border-2 border-black w-28 text-center">
                     <div className="bg-black text-white text-[11px] font-black py-0.5">CTN #</div>
-                    <div className="h-10 flex items-center justify-center font-bold text-xs">{selectedLabel.cartonNo}</div>
+                    <div className="h-10" />
                   </div>
                 </div>
 
                 {/* Table */}
                 <div className="border-[2px] border-black mb-4">
-                  <div className="grid grid-cols-7 border-b-[2px] border-black text-center font-black text-xs py-1.5">
+                  <div className="grid border-b-[2px] border-black text-center font-black text-xs py-1.5" style={{ gridTemplateColumns: '85fr 50fr 50fr 50fr 50fr 50fr 120fr' }}>
                     <div className="col-span-1 border-r-[2px] border-black text-[10px]">COLOUR</div>
                     <div className="border-r-[2px] border-black">XS</div>
                     <div className="border-r-[2px] border-black">S</div>
@@ -497,8 +650,10 @@ export default function CartonLabelTab({ labels, saveLabel }) {
                     <div>TOTAL</div>
                   </div>
                   {selectedLabel.rows.map((r, i) => (
-                    <div key={i} className={`grid grid-cols-7 text-center font-black ${i < selectedLabel.rows.length - 1 ? 'border-b-[2px] border-black' : ''}`}>
-                      <div className="border-r-[2px] border-black py-3 text-xs">{r.color}</div>
+                    <div key={i} className={`grid text-center font-black ${i < selectedLabel.rows.length - 1 ? 'border-b-[2px] border-black' : ''}`} style={{ gridTemplateColumns: '85fr 50fr 50fr 50fr 50fr 50fr 120fr' }}>
+                      <div className="border-r-[2px] border-black py-3 flex items-center justify-center overflow-hidden [container-type:inline-size]">
+                        <FitColorText text={r.color} maxSize={12} />
+                      </div>
                       <div className="border-r-[2px] border-black py-3 text-lg">{r.xs}</div>
                       <div className="border-r-[2px] border-black py-3 text-lg">{r.s}</div>
                       <div className="border-r-[2px] border-black py-3 text-lg">{r.m}</div>
@@ -512,8 +667,11 @@ export default function CartonLabelTab({ labels, saveLabel }) {
                 {/* Bottom Full-width Box */}
                 <div className="border-[3px] border-black p-3 text-center">
                   <div className="border border-black py-2 text-xl font-black">
-                    TOTAL: {selectedLabel.setsPerCarton || 30} SETS
+                    TOTAL: {setsText(selectedLabel.setsPerCarton || 30)}
                   </div>
+                  {hasMaster && (
+                    <div className="mt-2 text-sm font-black">{masterText}</div>
+                  )}
                 </div>
 
               </div>
@@ -532,13 +690,13 @@ export default function CartonLabelTab({ labels, saveLabel }) {
 
               <div className="mb-4">
                 <span className="text-[10px] font-bold text-slate-500 uppercase">STYLE</span>
-                <h2 className="text-3xl font-black">{selectedLabel.style || 'ALOO7 Set'}</h2>
+                <h2 className="text-3xl font-black">{displayStyleTitle}</h2>
               </div>
               <div className="h-[2px] bg-black w-full mb-4"></div>
 
               {/* Table with clean horizontal ruled lines */}
               <div className="space-y-2 mb-6">
-                <div className="grid grid-cols-7 text-center font-black text-xs pb-1 border-b border-black">
+                <div className="grid text-center font-black text-xs pb-1 border-b border-black" style={{ gridTemplateColumns: '90fr 45fr 45fr 45fr 45fr 45fr 65fr' }}>
                   <div className="text-left">COLOUR</div>
                   <div>XS</div>
                   <div>S</div>
@@ -548,8 +706,10 @@ export default function CartonLabelTab({ labels, saveLabel }) {
                   <div>TOTAL</div>
                 </div>
                 {selectedLabel.rows.map((r, i) => (
-                  <div key={i} className="grid grid-cols-7 text-center font-bold text-sm py-2.5 border-b border-black">
-                    <div className="text-left font-black">{r.color}</div>
+                  <div key={i} className="grid text-center font-bold text-sm py-2.5 border-b border-black" style={{ gridTemplateColumns: '90fr 45fr 45fr 45fr 45fr 45fr 65fr' }}>
+                    <div className="text-left flex items-center justify-start overflow-hidden [container-type:inline-size]">
+                      <FitColorText text={r.color} maxSize={12} align="left" />
+                    </div>
                     <div className="text-xl font-black">{r.xs}</div>
                     <div className="text-xl font-black">{r.s}</div>
                     <div className="text-xl font-black">{r.m}</div>
@@ -562,8 +722,11 @@ export default function CartonLabelTab({ labels, saveLabel }) {
 
               <div className="flex items-baseline justify-between border-b-2 border-black pb-2 pt-2">
                 <span className="text-base font-black">TOTAL</span>
-                <span className="text-3xl font-black">{selectedLabel.setsPerCarton || 30} SETS</span>
+                <span className="text-3xl font-black">{setsText(selectedLabel.setsPerCarton || 30)}</span>
               </div>
+              {hasMaster && (
+                <p className="mt-2 text-sm font-black">{masterText}</p>
+              )}
             </div>
           )}
 
@@ -581,17 +744,17 @@ export default function CartonLabelTab({ labels, saveLabel }) {
               <div className="grid grid-cols-12 gap-2 mb-3">
                 <div className="col-span-8 border-2 border-black p-3">
                   <h1 className="text-base font-black">{selectedLabel.buyer || 'SP IMPORTS'}</h1>
-                  <h2 className="text-xl font-black">{selectedLabel.style || 'ALOO7 Set'}</h2>
+                  <h2 className="text-xl font-black">{displayStyleTitle}</h2>
                 </div>
                 <div className="col-span-4 border-2 border-black p-2 text-center flex flex-col justify-center">
-                  <span className="text-[10px] font-black">SETS</span>
+                  <span className="text-[10px] font-black">{unitPlural}</span>
                   <span className="text-2xl font-black">{selectedLabel.setsPerCarton || 30}</span>
                 </div>
               </div>
 
               {/* Table */}
               <div className="border-2 border-black mb-3">
-                <div className="grid grid-cols-7 border-b-2 border-black text-center font-black text-xs py-1">
+                <div className="grid border-b-2 border-black text-center font-black text-xs py-1" style={{ gridTemplateColumns: '95fr 52fr 52fr 52fr 52fr 52fr 120fr' }}>
                   <div className="border-r-2 border-black">COLOUR</div>
                   <div className="border-r-2 border-black">XS</div>
                   <div className="border-r-2 border-black">S</div>
@@ -601,8 +764,10 @@ export default function CartonLabelTab({ labels, saveLabel }) {
                   <div>TOTAL</div>
                 </div>
                 {selectedLabel.rows.map((r, i) => (
-                  <div key={i} className={`grid grid-cols-7 text-center font-bold ${i < selectedLabel.rows.length - 1 ? 'border-b-2 border-black' : ''}`}>
-                    <div className="border-r-2 border-black py-2.5 text-xs font-black">{r.color}</div>
+                  <div key={i} className={`grid text-center font-bold ${i < selectedLabel.rows.length - 1 ? 'border-b-2 border-black' : ''}`} style={{ gridTemplateColumns: '95fr 52fr 52fr 52fr 52fr 52fr 120fr' }}>
+                    <div className="border-r-2 border-black py-2.5 flex items-center justify-center overflow-hidden [container-type:inline-size]">
+                      <FitColorText text={r.color} maxSize={12} />
+                    </div>
                     <div className="border-r-2 border-black py-2.5 text-lg font-black">{r.xs}</div>
                     <div className="border-r-2 border-black py-2.5 text-lg font-black">{r.s}</div>
                     <div className="border-r-2 border-black py-2.5 text-lg font-black">{r.m}</div>
@@ -614,7 +779,10 @@ export default function CartonLabelTab({ labels, saveLabel }) {
               </div>
 
               <div className="border-2 border-black py-2.5 text-center font-black text-xl">
-                TOTAL: {selectedLabel.setsPerCarton || 30} SETS
+                TOTAL: {setsText(selectedLabel.setsPerCarton || 30)}
+                {hasMaster && (
+                  <span className="block text-sm mt-0.5">{masterText}</span>
+                )}
               </div>
             </div>
           )}

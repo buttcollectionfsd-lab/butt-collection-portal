@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Package } from 'lucide-react';
 import DocumentEditorModal from './DocumentEditorModal';
 import DocumentItemsEditor from './DocumentItemsEditor';
 import PackingListDocument from './PackingListDocument';
+import BuyerPackingListDocument from './BuyerPackingListDocument';
 import { getPackingMeta, getPackingTotals } from '../utils/packingList';
 
 const FIELDS = [
@@ -78,6 +79,8 @@ const buildDefaults = (order) => {
 export default function PackingListModal(props) {
   const totals = getPackingTotals(props.order);
   const isStandalone = Boolean(props.order?.isStandalone);
+  const [layout, setLayout] = useState('form');
+  const [format, setFormat] = useState('form');
 
   const fields = isStandalone
     ? [
@@ -87,6 +90,11 @@ export default function PackingListModal(props) {
       ]
     : FIELDS;
 
+  const PreviewForFormat = (previewProps) =>
+    format === 'buyer'
+      ? <BuyerPackingListDocument {...previewProps} />
+      : <PackingListDocument {...previewProps} />;
+
   return (
     <DocumentEditorModal
       {...props}
@@ -95,9 +103,21 @@ export default function PackingListModal(props) {
       icon={Package}
       fields={fields}
       buildDefaults={buildDefaults}
-      Preview={PackingListDocument}
+      Preview={PreviewForFormat}
       pdfEndpoint="/export/pdf/packing-list"
       docxEndpoint="/export/docx/packing-list"
+      pdfQuery={format === 'buyer' ? 'format=buyer' : 'format=form'}
+      format={format}
+      onFormatChange={setFormat}
+      formatOptions={[
+        { value: 'form', label: 'Our Format', hint: 'Butt Collection factory packing list' },
+        { value: 'buyer', label: 'Buyer Format', hint: 'AQA style packing / weight list (30 pcs carton mix)' }
+      ]}
+      formatHint={
+        format === 'buyer'
+          ? 'Buyer format: AQA pattern — letterhead, order/customer/date strip, phir har carton mix (30 pcs) ka colour + size table. Word export sirf Our Format mein milta hai.'
+          : 'Our format: factory packing list colour/size breakdown ke saath. Buyer ki apni packing/weight list chahiye to Buyer Format chunein.'
+      }
       summaryText={`${totals.totalCartons.toLocaleString()} cartons • ${totals.totalPieces.toLocaleString()} pcs • ${totals.groups.length} style group(s)`}
       helpText={
         isStandalone

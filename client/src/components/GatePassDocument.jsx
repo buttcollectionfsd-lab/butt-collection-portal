@@ -1,5 +1,5 @@
 import React from 'react';
-import { getGatePassMeta } from '../utils/gatePass';
+import { getGatePassMeta, formatGatePassDate, formatGatePassWeight } from '../utils/gatePass';
 import { getCompanyAddress } from '../utils/company';
 
 const Field = ({ label, value, className = '' }) => (
@@ -25,7 +25,7 @@ const CheckBox = ({ checked }) => (
  * fields, a 12-row SR/DESCRIPTION/UNIT/QUANTITY/REMARKS table, and the
  * three signature lines.
  */
-export default function GatePassDocument({ order, company, blank = false }) {
+export default function GatePassDocument({ order, company, blank = false, compact = false }) {
   const meta = getGatePassMeta(order);
 
   const companyName = meta.companyName || company?.name || 'BUTT COLLECTION';
@@ -39,10 +39,20 @@ export default function GatePassDocument({ order, company, blank = false }) {
   const companyAddress = meta.companyAddress || getCompanyAddress(company);
 
   const items = blank ? [] : (meta.items || []).slice(0, 12);
-  const totalQty = items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+  const weightUnit = meta.weightUnit || 'kg';
+  const pcsTotalOnly = String(order?.gatePassPcsMode || '') === 'total';
+  const overridePcs = Number(order?.gatePassTotalPcs) || 0;
+  const totalQty = pcsTotalOnly && overridePcs > 0
+    ? overridePcs
+    : items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+  const totalBora = items.reduce((sum, item) => sum + (Number(item.cartons) || 0), 0);
+  const totalWeight = items.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
   const value = (input) => (blank ? '' : input || '');
 
-  const rows = Array.from({ length: 12 }, (_, index) => items[index] || null);
+  const rows = Array.from(
+    { length: compact ? Math.max(items.length, 1) : 12 },
+    (_, index) => items[index] || null
+  );
   const signatureLabels = [
     meta.preparedBy || 'Prepared by:',
     meta.authorizedBy || 'Approved by:',
@@ -92,7 +102,7 @@ export default function GatePassDocument({ order, company, blank = false }) {
       <div className="mt-2.5 space-y-2">
         <div className="grid grid-cols-2 gap-x-6">
           <Field label="Party Name:" value={value(meta.customer)} />
-          <Field label="Date:" value={value(meta.date)} />
+          <Field label="Date:" value={value(formatGatePassDate(meta.date))} />
         </div>
         <div className="grid grid-cols-2 gap-x-6">
           <Field label="Through Mr.:" value={value(meta.through)} />
@@ -108,17 +118,19 @@ export default function GatePassDocument({ order, company, blank = false }) {
       <table className="w-full mt-3 border-collapse table-fixed border-[1.6px] border-black text-[9px]">
         <colgroup>
           <col style={{ width: '5.7%' }} />
-          <col style={{ width: '50.1%' }} />
+          <col style={{ width: '37.3%' }} />
           <col style={{ width: '11.5%' }} />
-          <col style={{ width: '13.4%' }} />
-          <col style={{ width: '19.3%' }} />
+          <col style={{ width: '13%' }} />
+          <col style={{ width: '11%' }} />
+          <col style={{ width: '21.5%' }} />
         </colgroup>
         <thead>
           <tr className="border-b-[1.6px] border-black">
             <th className="border-r border-black py-1.5 text-[10px] font-extrabold">SR</th>
             <th className="border-r border-black py-1.5 text-[10px] font-extrabold">DESCRIPTION</th>
-            <th className="border-r border-black py-1.5 text-[10px] font-extrabold">UNIT</th>
-            <th className="border-r border-black py-1.5 text-[10px] font-extrabold">QUANTITY</th>
+            <th className="border-r border-black py-1.5 text-[10px] font-extrabold">BORA / CTN</th>
+            <th className="border-r border-black py-1.5 text-[10px] font-extrabold">QTY (PCS)</th>
+            <th className="border-r border-black py-1.5 text-[10px] font-extrabold">WEIGHT ({String(weightUnit).toUpperCase()})</th>
             <th className="py-1.5 text-[10px] font-extrabold">REMARKS</th>
           </tr>
         </thead>
@@ -131,12 +143,6 @@ export default function GatePassDocument({ order, company, blank = false }) {
                 item.color
               ].filter(Boolean).join(' - ')
               : '';
-            const remarks = item
-              ? [
-                Number(item.cartons) ? `${Number(item.cartons)} CTN` : '',
-                item.remarks || ''
-              ].filter(Boolean).join(' | ')
-              : '';
 
             return (
               <tr key={item?.id || `row-${index}`} className="border-b border-black last:border-b-[1.6px]">
@@ -144,12 +150,17 @@ export default function GatePassDocument({ order, company, blank = false }) {
                 <td className="border-r border-black px-1.5 py-1.5 align-middle">
                   <span className="block truncate font-medium">{description}</span>
                 </td>
-                <td className="border-r border-black text-center align-middle">{item ? 'PCS' : ''}</td>
+                <td className="border-r border-black px-1 text-center align-middle font-semibold">
+                  {item && Number(item.cartons) ? Number(item.cartons).toLocaleString() : item ? '-' : ''}
+                </td>
                 <td className="border-r border-black px-1.5 text-right align-middle font-semibold">
-                  {item ? Number(item.qty || 0).toLocaleString() : ''}
+                  {item ? (Number(item.qty) ? Number(item.qty).toLocaleString() : '-') : ''}
+                </td>
+                <td className="border-r border-black px-1.5 text-right align-middle font-semibold">
+                  {item ? (formatGatePassWeight(item.weight, weightUnit) || '-') : ''}
                 </td>
                 <td className="px-1.5 py-1.5 align-middle">
-                  <span className="block truncate text-[8px]">{remarks}</span>
+                  <span className="block truncate text-[8px]">{item?.remarks || ''}</span>
                 </td>
               </tr>
             );
@@ -157,20 +168,38 @@ export default function GatePassDocument({ order, company, blank = false }) {
         </tbody>
         <tfoot>
           <tr className="border-t-[1.6px] border-black font-extrabold">
-            <td colSpan="3" className="border-r border-black px-2 py-1.5 text-right text-[11px]">
+            <td colSpan="2" className="border-r border-black px-2 py-1.5 text-right text-[11px]">
               Total
+            </td>
+            <td className="border-r border-black px-1 py-1.5 text-center text-[10px]">
+              {blank ? '' : totalBora.toLocaleString()}
             </td>
             <td className="border-r border-black px-1.5 py-1.5 text-right text-[10px]">
               {blank ? '' : totalQty.toLocaleString()}
+            </td>
+            <td className="border-r border-black px-1.5 py-1.5 text-right text-[10px]">
+              {blank ? '' : (meta.totalWeightValue || formatGatePassWeight(totalWeight, weightUnit) || '-')}
+              {!blank && totalWeight > 0 && (
+                <span className="block text-[6.5px] font-bold uppercase tracking-wide leading-tight">
+                  {meta.totalWeightLabel || 'Total Weight'}
+                </span>
+              )}
             </td>
             <td></td>
           </tr>
         </tfoot>
       </table>
 
+      {!blank && (meta.totalWeightValue || totalWeight > 0) && (
+        <p className="mt-1.5 text-[10px] font-extrabold leading-tight">
+          {meta.totalWeightLabel || 'Total Weight'}: {meta.totalWeightValue
+            || `${formatGatePassWeight(totalWeight, weightUnit)} ${weightUnit === 'g' ? 'g' : 'kg'}`}
+        </p>
+      )}
+
       {/* Extra dispatch references kept visible without changing the form */}
       <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[8px] leading-tight text-black">
-        {meta.orderNo && <span><b>Order #:</b> {meta.orderNo}</span>}
+        {meta.orderNo && <span><b>{meta.orderLabel || 'Order #'}:</b> {meta.orderNo}</span>}
         {meta.destination && <span><b>Destination:</b> {meta.destination}</span>}
         {meta.purpose && <span><b>Purpose:</b> {meta.purpose}</span>}
         {meta.remarks && <span><b>Remarks:</b> {meta.remarks}</span>}
@@ -178,7 +207,7 @@ export default function GatePassDocument({ order, company, blank = false }) {
       </div>
 
       {/* ---------- Signatures ---------- */}
-      <div className="mt-20 grid grid-cols-3 gap-8">
+      <div className={`${compact ? 'mt-8' : 'mt-20'} grid grid-cols-3 gap-8`}>
         {signatureLabels.map((label, index) => (
           <div key={`${label}-${index}`}>
             <div className="h-[1px] bg-black" />

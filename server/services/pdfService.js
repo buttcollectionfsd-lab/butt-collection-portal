@@ -7,7 +7,7 @@
  * 4. 'top_ctn' (Design 4: Large CTN# box on very top, dual buyer/sets middle box, sizing table, bottom total)
  */
 const PDFDocument = require('pdfkit');
-const { getGatePassMeta, getGatePassTotals } = require('../utils/gatePass');
+const { getGatePassMeta, getGatePassTotals, formatGatePassDate, formatGatePassWeight } = require('../utils/gatePass');
 const { getPackingTotals } = require('../utils/packingList');
 const { getInvoiceMeta } = require('../utils/invoice');
 const { getCompanyAddress } = require('../utils/companyInfo');
@@ -546,8 +546,14 @@ function generateGatePassFormPdfBuffer(order, company, options = {}) {
   return new Promise((resolve, reject) => {
     try {
       const copies = Number(options.copies) === 2 ? 2 : 1;
+      // `copies: 'pages'` — do full-size copies, har ek apne A4 page par.
+      const twoPages = options.copies === 'pages' || options.pages === 2;
       const blank = Boolean(options.blank) || !order;
+      // Compact: sirf zaroori rows (jitne items) + signatures qareeb — khali rows nahi.
+      const compact = Boolean(options.compact);
       const meta = order ? getGatePassMeta(order) : null;
+      const orderTotals = order ? getGatePassTotals(order) : { pieces: 0, rowPieces: 0, cartons: 0, weight: 0 };
+      const pcsTotalOnly = String(order?.gatePassPcsMode || '') === 'total';
       const isTwoUp = copies === 2;
 
       const doc = new PDFDocument({
@@ -635,7 +641,7 @@ function generateGatePassFormPdfBuffer(order, company, options = {}) {
           .moveTo(108, 156).lineTo(350, 156).stroke()
           .moveTo(404, 156).lineTo(559, 156).stroke();
         fieldValue(meta?.customer, 110, 140, 236);
-        fieldValue(meta?.date, 406, 140, 150);
+        fieldValue(formatGatePassDate(meta?.date), 406, 140, 150);
 
         doc.font('Helvetica-Bold').fontSize(10)
           .text('Through Mr.:', 36, 163)
@@ -659,31 +665,33 @@ function generateGatePassFormPdfBuffer(order, company, options = {}) {
         const tableTop = 222;
         const headerHeight = 26;
         const rowHeight = 29;
-        const tableBottom = tableTop + headerHeight + rowHeight * 12;
+        const rowCount = compact ? Math.max(pageItems.length, 1) : 12;
+        const tableBottom = tableTop + headerHeight + rowHeight * rowCount;
         const totalBottom = tableBottom + rowHeight;
 
         doc.lineWidth(1.6).rect(left, tableTop, width, totalBottom - tableTop).stroke();
 
         // Column separators
         doc.lineWidth(1);
-        [66, 328, 388, 458].forEach(x => {
+        [66, 286, 342, 412, 470].forEach(x => {
           doc.moveTo(x, tableTop).lineTo(x, totalBottom).stroke();
         });
 
         // Header row
         doc.lineWidth(1.6).moveTo(left, tableTop + headerHeight).lineTo(right, tableTop + headerHeight).stroke();
-        doc.font('Helvetica-Bold').fontSize(10);
+        doc.font('Helvetica-Bold').fontSize(9.5);
         doc.text('SR', 36, tableTop + 10, { width: 30, align: 'center' });
-        doc.text('DESCRIPTION', 66, tableTop + 10, { width: 262, align: 'center' });
-        doc.text('UNIT', 328, tableTop + 10, { width: 60, align: 'center' });
-        doc.text('QUANTITY', 388, tableTop + 10, { width: 70, align: 'center' });
-        doc.text('REMARKS', 458, tableTop + 10, { width: 101, align: 'center' });
+        doc.text('DESCRIPTION', 66, tableTop + 10, { width: 220, align: 'center' });
+        doc.fontSize(8.5).text('BORA / CTN', 286, tableTop + 11, { width: 56, align: 'center' });
+        doc.fontSize(8.5).text('QTY (PCS)', 342, tableTop + 11, { width: 70, align: 'center' });
+        doc.fontSize(8.5).text(`WEIGHT (${String(meta?.weightUnit || 'kg').toUpperCase()})`, 412, tableTop + 11, { width: 58, align: 'center' });
+        doc.fontSize(9).text('REMARKS', 470, tableTop + 11, { width: 89, align: 'center' });
 
-        // 12 numbered rows
-        for (let i = 0; i < 12; i += 1) {
+        // Numbered rows
+        for (let i = 0; i < rowCount; i += 1) {
           const rowTop = tableTop + headerHeight + i * rowHeight;
           const rowBottom = rowTop + rowHeight;
-          doc.lineWidth(i === 11 ? 1.6 : 0.8)
+          doc.lineWidth(i === rowCount - 1 ? 1.6 : 0.8)
             .moveTo(left, rowBottom).lineTo(right, rowBottom).stroke();
 
           doc.font('Helvetica').fontSize(9)
@@ -697,31 +705,50 @@ function generateGatePassFormPdfBuffer(order, company, options = {}) {
             item.gsm && !String(item.style || '').includes(String(item.gsm)) ? `${item.gsm} GSM` : '',
             item.color || ''
           ].filter(Boolean).join(' - ');
-          const remarkParts = [];
-          if (Number(item.cartons)) remarkParts.push(`${Number(item.cartons)} CTN`);
-          if (item.remarks) remarkParts.push(item.remarks);
+          const cartons = Number(item.cartons) || 0;
+          const weight = Number(item.weight) || 0;
 
           doc.font('Helvetica').fontSize(8)
-            .text(description || '-', 70, rowTop + 6, { width: 252, height: 20, ellipsis: true })
-            .text('PCS', 330, rowTop + 9, { width: 54, align: 'center' })
-            .text(Number(item.qty || 0).toLocaleString(), 390, rowTop + 9, { width: 62, align: 'right' });
-          doc.fontSize(7)
-            .text(remarkParts.join(' | ') || '-', 460, rowTop + 9, { width: 95, height: 18, ellipsis: true });
+            .text(description || '-', 70, rowTop + 6, { width: 212, height: 20, ellipsis: true })
+            .text(cartons ? cartons.toLocaleString() : '-', 288, rowTop + 9, { width: 52, align: 'center' })
+            .text(Number(item.qty) ? Number(item.qty).toLocaleString() : '-', 344, rowTop + 9, { width: 66, align: 'right' })
+            .text(formatGatePassWeight(weight, meta?.weightUnit) || '-', 414, rowTop + 9, { width: 54, align: 'right' });
+          doc.fontSize(6.8)
+            .text(item.remarks || '', 472, rowTop + 9, { width: 85, height: 18, ellipsis: true });
         }
 
         // Total row
-        const totalQty = pageItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
-        doc.font('Helvetica-Bold').fontSize(11)
-          .text('Total', 328, tableBottom + 9, { width: 58, align: 'right' });
+        const totalQty = pcsTotalOnly
+          ? orderTotals.pieces
+          : pageItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+        const totalBora = pageItems.reduce((sum, item) => sum + (Number(item.cartons) || 0), 0);
+        const totalWeight = pageItems.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
+        const manualTotalWeight = meta?.totalWeightValue || '';
+        const autoTotalWeight = formatGatePassWeight(totalWeight, meta?.weightUnit) || '-';
+        doc.font('Helvetica-Bold').fontSize(10.5)
+          .text('Total', 222, tableBottom + 9, { width: 62, align: 'right' });
         if (!blank) {
-          doc.fontSize(10)
-            .text(totalQty.toLocaleString(), 390, tableBottom + 10, { width: 62, align: 'right' });
+          doc.fontSize(manualTotalWeight ? (manualTotalWeight.length > 9 ? 7.5 : 9) : 9.5)
+            .text(totalBora ? totalBora.toLocaleString() : '-', 288, tableBottom + 10, { width: 52, align: 'center' })
+            .text(totalQty.toLocaleString(), 344, tableBottom + 10, { width: 66, align: 'right' })
+            .text(manualTotalWeight || autoTotalWeight, 414, tableBottom + 10, { width: 54, align: 'right', height: 20, ellipsis: true });
+        }
+
+        // Grand total weight line — label aur value dono editable
+        const totalWeightLabel = meta?.totalWeightLabel || 'Total Weight';
+        const totalWeightDisplay = manualTotalWeight
+          || (totalWeight > 0 ? `${autoTotalWeight} ${meta?.weightUnit === 'g' ? 'g' : 'kg'}` : '');
+        let refsY = totalBottom + 8;
+        if (!blank && totalWeightDisplay) {
+          doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#000000')
+            .text(`${totalWeightLabel}: ${totalWeightDisplay}`, left + 4, totalBottom + 6, { width: width - 8 });
+          refsY = totalBottom + 22;
         }
 
         // Dispatch references (small print, keeps the stationery layout)
         if (!blank) {
           const refs = [
-            meta?.orderNo ? `Order #: ${meta.orderNo}` : '',
+            meta?.orderNo ? `${meta.orderLabel || 'Order #'}: ${meta.orderNo}` : '',
             meta?.destination ? `Destination: ${meta.destination}` : '',
             meta?.purpose ? `Purpose: ${meta.purpose}` : '',
             meta?.remarks ? `Remarks: ${meta.remarks}` : '',
@@ -730,13 +757,13 @@ function generateGatePassFormPdfBuffer(order, company, options = {}) {
           ].filter(Boolean).join('   •   ');
           if (refs) {
             doc.font('Helvetica').fontSize(7.5).fillColor('#333333')
-              .text(refs, left, totalBottom + 8, { width, height: 12, ellipsis: true });
+              .text(refs, left, refsY, { width, height: 12, ellipsis: true });
             doc.fillColor('#000000');
           }
         }
 
         // ---------- Signatures ----------
-        const signatureY = 695;
+        const signatureY = compact ? Math.min(totalBottom + 96, 700) : 695;
         doc.lineWidth(1);
         [
           [46, 171, meta?.preparedBy || 'Prepared by:'],
@@ -769,7 +796,12 @@ function generateGatePassFormPdfBuffer(order, company, options = {}) {
           });
         }
 
-        if (isTwoUp) {
+        if (twoPages) {
+          // Two full-size copies, one per A4 portrait page (same size as 1-up).
+          drawForm(chunk, chunkIndex);
+          doc.addPage({ size: 'A4', layout: 'portrait', margin: 0 });
+          drawForm(chunk, chunkIndex);
+        } else if (isTwoUp) {
           // The form is drawn in A4-portrait coordinates and scaled down, so tell
           // PDFKit the usable page is taller than the landscape page. Without
           // this, auto page-breaks split the copies mid-table.
@@ -858,7 +890,7 @@ function generateGatePassPdfBuffer(order, company) {
 
       const leftRows = [
         ['Gate Pass #:', meta.no],
-        ['Date:', meta.date],
+        ['Date:', formatGatePassDate(meta.date)],
         ['Customer / Buyer:', meta.customer || '-'],
         ['Order #:', meta.orderNo || '-']
       ];

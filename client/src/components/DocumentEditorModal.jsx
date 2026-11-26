@@ -10,7 +10,8 @@ import {
   AlertTriangle,
   Printer
 } from 'lucide-react';
-import { printPdf } from '../utils/printPdf';
+import { renderPdfPages, printImages, getPdfPrintStats } from '../utils/printPdf';
+import PrintPreviewModal from './PrintPreviewModal';
 
 const API_BASE = 'http://localhost:5000/api';
 
@@ -33,9 +34,14 @@ export default function DocumentEditorModal({
   pdfLayout,
   pdfLayoutOptions,
   onPdfLayoutChange,
+  format,
+  formatOptions,
+  onFormatChange,
+  formatHint,
   helpText,
   summaryText,
   renderExtra,
+  extraFirst = false,
   onSave,
   onClose
 }) {
@@ -44,21 +50,45 @@ export default function DocumentEditorModal({
   const [saving, setSaving] = useState(false);
   const [view, setView] = useState('document');
   const [pdfVersion, setPdfVersion] = useState(0);
+  const [pdfStamp, setPdfStamp] = useState(() => Date.now());
   const [printing, setPrinting] = useState(false);
+  const [printStats, setPrintStats] = useState(null);
+  const [printPreview, setPrintPreview] = useState(null);
 
   useEffect(() => {
     setForm(buildDefaults(order, company));
     setDirty(false);
     setPdfVersion(0);
+    setPdfStamp(Date.now());
     setView('document');
   }, [order?.id]);
 
   const previewOrder = useMemo(() => ({ ...order, ...form }), [order, form]);
 
+  const pdfUrl = order
+    ? `${API_BASE}${pdfEndpoint}/${order.id}${pdfQuery ? `?${pdfQuery}` : ''}`
+    : '';
+
+  useEffect(() => {
+    if (!pdfUrl) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const stats = await getPdfPrintStats(pdfUrl);
+        if (!cancelled) setPrintStats(stats);
+      } catch (_) {
+        if (!cancelled) setPrintStats(null);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [pdfUrl, pdfVersion]);
+
   if (!order) return null;
 
-  const pdfUrl = `${API_BASE}${pdfEndpoint}/${order.id}${pdfQuery ? `?${pdfQuery}` : ''}`;
-  const inlinePdfUrl = `${pdfUrl}${pdfQuery ? '&' : '?'}inline=1&v=${pdfVersion}`;
+  const inlinePdfUrl = `${pdfUrl}${pdfQuery ? '&' : '?'}inline=1&v=${pdfVersion}&t=${pdfStamp}`;
   const docxUrl = `${API_BASE}${docxEndpoint}/${order.id}`;
 
   const update = (key, value) => {
@@ -83,11 +113,34 @@ export default function DocumentEditorModal({
   const handlePrint = async () => {
     try {
       setPrinting(true);
-      await printPdf(pdfUrl, { title: `${title} • ${order.orderNumber}` });
+      // Har print par taaza PDF, phir exact preview jo printer ko jayega.
+      const printUrl = `${pdfUrl}${pdfQuery ? '&' : '?'}v=${Date.now()}`;
+      const images = await renderPdfPages(printUrl);
+      if (!images.length) throw new Error('PDF mein koi page nahi mila.');
+      setPrintPreview({
+        images,
+        landscape: images[0].width > images[0].height,
+        title: `${title} • ${order.orderNumber}`
+      });
     } catch (err) {
-      alert(err.message || 'Print nahi ho saka');
+      alert(err.message || 'Print preview nahi ban saka');
     } finally {
       setPrinting(false);
+    }
+  };
+
+  const handleConfirmPrint = async () => {
+    if (!printPreview) return;
+    try {
+      setPrintPreview(prev => (prev ? { ...prev, printing: true } : prev));
+      await printImages(printPreview.images, {
+        landscape: printPreview.landscape,
+        title: printPreview.title
+      });
+      setPrintPreview(null);
+    } catch (err) {
+      setPrintPreview(prev => (prev ? { ...prev, printing: false } : prev));
+      alert(err.message || 'Print nahi ho saka');
     }
   };
 
@@ -124,6 +177,7 @@ export default function DocumentEditorModal({
           {/* Editor */}
           <aside className="border-b lg:border-b-0 lg:border-r border-slate-200 p-4 overflow-y-auto max-h-[42vh] lg:max-h-none">
             <div className="space-y-3">
+              {extraFirst && renderExtra ? renderExtra({ form, update }) : null}
               {fields.map((field, index) => {
                 const previousSection = index > 0 ? fields[index - 1].section : null;
                 return (
@@ -164,7 +218,7 @@ export default function DocumentEditorModal({
                 );
               })}
 
-              {renderExtra ? renderExtra({ form, update }) : null}
+              {!extraFirst && renderExtra ? renderExtra({ form, update }) : null}
             </div>
 
             <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] text-slate-600">
@@ -176,12 +230,40 @@ export default function DocumentEditorModal({
             </div>
 
             <div className="mt-4 space-y-2">
+              {formatOptions?.length > 0 && onFormatChange && (
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-1">
+                    Document Format
+                  </p>
+                  <div className="flex flex-wrap gap-1 p-1 bg-slate-100 border border-slate-300 rounded-xl">
+                    {formatOptions.map(option => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => onFormatChange(option.value)}
+                        className={`flex-1 px-2 py-1.5 rounded-lg text-[10px] font-extrabold transition ${
+                          format === option.value
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:bg-white'
+                        }`}
+                        title={option.hint || option.label}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  {formatHint && (
+                    <p className="mt-1 text-[10px] text-slate-500">{formatHint}</p>
+                  )}
+                </div>
+              )}
+
               {pdfLayoutOptions?.length > 0 && onPdfLayoutChange && (
                 <div>
                   <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-1">
                     Print Layout
                   </p>
-                  <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 border border-slate-300 rounded-xl">
+                  <div className={`grid ${pdfLayoutOptions.length > 2 ? 'grid-cols-1' : 'grid-cols-2'} gap-1 p-1 bg-slate-100 border border-slate-300 rounded-xl`}>
                     {pdfLayoutOptions.map(option => (
                       <button
                         key={option.value}
@@ -203,6 +285,16 @@ export default function DocumentEditorModal({
                       PDF: landscape A4 par ek hi paper par do copies (left + right, beech mein cut guide). Word single portrait rehta hai.
                     </p>
                   )}
+                  {pdfLayout === '2pages' && (
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      PDF: do full-size A4 pages — dono copies bilkul same size (1 per page jaisi), har page par ek. Word single portrait rehta hai.
+                    </p>
+                  )}
+                  {pdfLayout === 'compact' && (
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      PDF: sirf jitni rows chahiye utni (jitne items) — khali numbered lines nahi, signatures table ke qareeb. Paper A4 portrait.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -213,12 +305,20 @@ export default function DocumentEditorModal({
                 className="w-full flex items-center justify-center space-x-1.5 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white rounded-xl text-xs font-extrabold transition shadow-sm"
               >
                 {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
-                <span>{printing ? 'Document taiyar ho raha hai...' : 'Print (full settings)'}</span>
+                <span>{printing ? 'Print preview ban raha hai...' : 'Print (pehle preview)'}</span>
               </button>
               <p className="text-[10px] text-slate-500 -mt-1">
-                Print dialog khul jayega — wahan paper size, orientation, margins, scale aur copies sab set karein.
+                Print dabate hi pehle <b>Print Preview</b> khulega — paper ka size, direction (portrait/landscape) aur exact design waisa hi dikhega jaisa chhapega. Wahan <b>Print karein</b> se browser ka full print dialog khulega.
+                PDF ka portrait/landscape pehle se <b>Print Layout</b> se tay hota hai (1 per page / 2 copies = portrait, 2 per page = landscape).
                 {dirty ? ' Unsaved changes print nahi honge — pehle Save karein.' : ''}
               </p>
+
+              {printStats && (
+                <p className="text-[10px] font-semibold text-sky-700 -mt-1">
+                  A4 {printStats.orientation === 'landscape' ? 'landscape' : 'portrait'} • {printStats.pages} page
+                  {' • '}aakhri page {printStats.fillPercent}% bhara, {printStats.blankPercent}% khali
+                </p>
+              )}
 
               <button
                 type="button"
@@ -279,7 +379,11 @@ export default function DocumentEditorModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setView('pdf')}
+                  onClick={() => {
+                    // Har baar PDF tab kholne par taaza PDF fetch ho (cached purani copy na dikhe).
+                    setPdfStamp(Date.now());
+                    setView('pdf');
+                  }}
                   className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition ${
                     view === 'pdf'
                       ? 'bg-blue-600 text-white shadow-sm'
@@ -329,6 +433,12 @@ export default function DocumentEditorModal({
 
         </div>
       </div>
+
+      <PrintPreviewModal
+        preview={printPreview}
+        onClose={() => setPrintPreview(null)}
+        onPrint={handleConfirmPrint}
+      />
     </div>
   );
 }

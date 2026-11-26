@@ -16,7 +16,7 @@ const {
   HeadingLevel,
   ShadingType
 } = require('docx');
-const { getGatePassMeta } = require('../utils/gatePass');
+const { getGatePassMeta, getGatePassTotals, formatGatePassDate, formatGatePassWeight } = require('../utils/gatePass');
 const { getPackingTotals } = require('../utils/packingList');
 const { getInvoiceMeta } = require('../utils/invoice');
 const { getCompanyAddress } = require('../utils/companyInfo');
@@ -459,14 +459,14 @@ async function generateGatePassDocx(order, company) {
   const fieldsTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     rows: [
-      fieldRow('Party Name:', meta.customer, 'Date:', meta.date),
+      fieldRow('Party Name:', meta.customer, 'Date:', formatGatePassDate(meta.date)),
       fieldRow('Through Mr.:', meta.through, 'Vehicle #:', meta.vehicleNo),
       fieldRow('Driver Name:', meta.driverName, 'Driver Cell No.:', meta.driverCell)
     ]
   });
 
   // ---- 12-row dispatch table ----
-  const colWidths = [6, 50, 11, 14, 19];
+  const colWidths = [6, 38, 12, 14, 12, 18];
 
   const headerCell = (text, index) => new TableCell({
     width: { size: colWidths[index], type: WidthType.PERCENTAGE },
@@ -474,7 +474,7 @@ async function generateGatePassDocx(order, company) {
       top: medium,
       bottom: medium,
       left: index === 0 ? medium : thin,
-      right: index === 4 ? medium : thin
+      right: index === 5 ? medium : thin
     },
     children: [new Paragraph({
       alignment: AlignmentType.CENTER,
@@ -489,9 +489,10 @@ async function generateGatePassDocx(order, company) {
       children: [
         headerCell('SR', 0),
         headerCell('DESCRIPTION', 1),
-        headerCell('UNIT', 2),
-        headerCell('QUANTITY', 3),
-        headerCell('REMARKS', 4)
+        headerCell('BORA / CTN', 2),
+        headerCell('QTY (PCS)', 3),
+        headerCell(`WEIGHT (${String(meta.weightUnit || 'kg').toUpperCase()})`, 4),
+        headerCell('REMARKS', 5)
       ]
     })
   ];
@@ -508,12 +509,7 @@ async function generateGatePassDocx(order, company) {
         item.color || ''
       ].filter(Boolean).join(' - ')
       : '';
-    const remarks = item
-      ? [
-        Number(item.cartons) ? `${Number(item.cartons)} CTN` : '',
-        item.remarks || ''
-      ].filter(Boolean).join(' | ')
-      : '';
+    const remarks = item ? item.remarks || '' : '';
 
     const bodyCell = (text, colIndex, alignment = AlignmentType.LEFT, bold = false, size = 16) => new TableCell({
       width: { size: colWidths[colIndex], type: WidthType.PERCENTAGE },
@@ -521,7 +517,7 @@ async function generateGatePassDocx(order, company) {
         top: noBorder,
         bottom: index === rowCount - 1 ? medium : thin,
         left: colIndex === 0 ? medium : thin,
-        right: colIndex === 4 ? medium : thin
+        right: colIndex === 5 ? medium : thin
       },
       children: [new Paragraph({
         alignment,
@@ -534,24 +530,45 @@ async function generateGatePassDocx(order, company) {
       children: [
         bodyCell(String(index + 1), 0, AlignmentType.CENTER),
         bodyCell(description, 1),
-        bodyCell(item ? 'PCS' : '', 2, AlignmentType.CENTER),
-        bodyCell(item ? Number(item.qty || 0).toLocaleString() : '', 3, AlignmentType.RIGHT, true),
-        bodyCell(remarks, 4, AlignmentType.LEFT, false, 14)
+        bodyCell(item && Number(item.cartons) ? Number(item.cartons).toLocaleString() : item ? '-' : '', 2, AlignmentType.CENTER),
+        bodyCell(item && Number(item.qty) ? Number(item.qty).toLocaleString() : item ? '-' : '', 3, AlignmentType.RIGHT, true),
+        bodyCell(item ? (formatGatePassWeight(item.weight, meta.weightUnit) || '-') : '', 4, AlignmentType.RIGHT),
+        bodyCell(remarks, 5, AlignmentType.LEFT, false, 14)
       ]
     }));
   }
 
-  const totalQty = items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+  const gateTotals = getGatePassTotals(order);
+  const totalQty = String(order?.gatePassPcsMode || '') === 'total'
+    ? gateTotals.pieces
+    : items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+
+  const totalBora = items.reduce((sum, item) => sum + (Number(item.cartons) || 0), 0);
+  const totalWeight = items.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
+  const totalWeightLabel = meta.totalWeightLabel || 'Total Weight';
+  const totalWeightDisplay = meta.totalWeightValue
+    || (totalWeight > 0
+      ? `${formatGatePassWeight(totalWeight, meta.weightUnit)} ${meta.weightUnit === 'g' ? 'g' : 'kg'}`
+      : '');
 
   itemRows.push(new TableRow({
     children: [
       new TableCell({
-        columnSpan: 3,
+        columnSpan: 2,
         borders: { top: medium, bottom: medium, left: medium, right: thin },
         children: [new Paragraph({
           alignment: AlignmentType.RIGHT,
           spacing: { before: 60, after: 60 },
           children: [new TextRun({ text: 'Total', bold: true, size: 20 })]
+        })]
+      }),
+      new TableCell({
+        width: { size: colWidths[2], type: WidthType.PERCENTAGE },
+        borders: { top: medium, bottom: medium, left: thin, right: thin },
+        children: [new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 60, after: 60 },
+          children: [new TextRun({ text: totalBora ? totalBora.toLocaleString() : '-', bold: true, size: 18 })]
         })]
       }),
       new TableCell({
@@ -565,6 +582,15 @@ async function generateGatePassDocx(order, company) {
       }),
       new TableCell({
         width: { size: colWidths[4], type: WidthType.PERCENTAGE },
+        borders: { top: medium, bottom: medium, left: thin, right: thin },
+        children: [new Paragraph({
+          alignment: AlignmentType.RIGHT,
+          spacing: { before: 60, after: 60 },
+          children: [new TextRun({ text: meta.totalWeightValue || formatGatePassWeight(totalWeight, meta.weightUnit) || '-', bold: true, size: 18 })]
+        })]
+      }),
+      new TableCell({
+        width: { size: colWidths[5], type: WidthType.PERCENTAGE },
         borders: { top: medium, bottom: medium, left: thin, right: medium },
         children: [new Paragraph({ children: [new TextRun({ text: '' })] })]
       })
@@ -577,7 +603,7 @@ async function generateGatePassDocx(order, company) {
   });
 
   const refs = [
-    meta.orderNo ? `Order #: ${meta.orderNo}` : '',
+    meta.orderNo ? `${meta.orderLabel || 'Order #'}: ${meta.orderNo}` : '',
     meta.destination ? `Destination: ${meta.destination}` : '',
     meta.purpose ? `Purpose: ${meta.purpose}` : '',
     meta.remarks ? `Remarks: ${meta.remarks}` : '',
@@ -613,6 +639,14 @@ async function generateGatePassDocx(order, company) {
           fieldsTable,
           new Paragraph({ spacing: { before: 120, after: 0 }, children: [new TextRun({ text: '' })] }),
           itemsTable,
+          totalWeightDisplay ? new Paragraph({
+            spacing: { before: 80, after: 0 },
+            children: [new TextRun({
+              text: `${totalWeightLabel}: ${totalWeightDisplay}`,
+              bold: true,
+              size: 18
+            })]
+          }) : new Paragraph({ spacing: { before: 40, after: 0 }, children: [new TextRun({ text: '' })] }),
           new Paragraph({
             spacing: { before: 60, after: 0 },
             children: [new TextRun({ text: refs, size: 14, color: '333333' })]

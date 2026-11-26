@@ -12,6 +12,28 @@ const text = (value, fallback = '') => {
   return saved || fallback;
 };
 
+// Dates are stored as YYYY-MM-DD (for the editor's date input) and printed
+// as DD/MM/YYYY on the gate pass.
+export function formatGatePassDate(value) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : raw;
+}
+
+// Wazan ka unit: 'g' (grams) ya 'kg' (default). Grams bina comma print hote hain.
+export function getGatePassWeightUnit(order) {
+  return String(order?.gatePassWeightUnit || '').toLowerCase() === 'g' ? 'g' : 'kg';
+}
+
+export function formatGatePassWeight(value, unit = 'kg') {
+  const amount = Number(value) || 0;
+  if (!amount) return '';
+  if (unit === 'g') {
+    return amount.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 2 });
+  }
+  return amount.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
 function normalizeGatePassItem(item, index) {
   return {
     id: item?.id || `gp-item-${index + 1}`,
@@ -20,6 +42,7 @@ function normalizeGatePassItem(item, index) {
     color: text(item?.color),
     cartons: Number(item?.cartons) || 0,
     qty: Number(item?.qty) || 0,
+    weight: Number(item?.weight) || 0,
     remarks: text(item?.remarks)
   };
 }
@@ -48,7 +71,8 @@ export function getGatePassMeta(order) {
     title: text(order?.gatePassTitle, 'GATE PASS'),
     generatedOn: text(order?.gatePassGeneratedOn, new Date().toLocaleDateString('en-GB')),
     customer: text(order?.gatePassCustomer || order?.customer),
-    orderNo: text(order?.gatePassOrderNo || order?.orderNumber),
+    orderNo: text(order?.gatePassOrderNo ?? order?.orderNumber),
+    orderLabel: text(order?.gatePassOrderLabel, 'Order #'),
     companyName: text(order?.gatePassCompanyName),
     companyTagline: text(order?.gatePassCompanyTagline),
     companyAddress: text(order?.gatePassCompanyAddress),
@@ -58,14 +82,22 @@ export function getGatePassMeta(order) {
     authorizedBy: text(order?.gatePassAuthorizedBy, 'Approved by:'),
     footerNote: text(order?.gatePassFooterNote, 'This gate pass is valid for the dispatch described above only.'),
 
+    weightUnit: getGatePassWeightUnit(order),
+    totalWeightLabel: text(order?.gatePassTotalWeightLabel, 'Total Weight'),
+    totalWeightValue: text(order?.gatePassTotalWeightValue),
     items: getGatePassItems(order)
   };
 }
 
 export function getGatePassTotals(order) {
   const items = getGatePassItems(order);
+  const rowPieces = items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+  const overridePieces = Number(order?.gatePassTotalPcs) || 0;
+  const totalOnly = String(order?.gatePassPcsMode || '') === 'total';
   return {
-    pieces: items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0),
-    cartons: items.reduce((sum, item) => sum + (Number(item.cartons) || 0), 0)
+    pieces: totalOnly && overridePieces > 0 ? overridePieces : rowPieces,
+    rowPieces,
+    cartons: items.reduce((sum, item) => sum + (Number(item.cartons) || 0), 0),
+    weight: items.reduce((sum, item) => sum + (Number(item.weight) || 0), 0)
   };
 }

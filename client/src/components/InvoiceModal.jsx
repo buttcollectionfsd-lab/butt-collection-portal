@@ -3,6 +3,8 @@ import { Receipt } from 'lucide-react';
 import DocumentEditorModal from './DocumentEditorModal';
 import DocumentItemsEditor from './DocumentItemsEditor';
 import InvoiceDocument from './InvoiceDocument';
+import BuyerInvoiceDocument from './BuyerInvoiceDocument';
+import BankInvoiceDocument from './BankInvoiceDocument';
 import { getInvoiceMeta } from '../utils/invoice';
 
 const money = (value) =>
@@ -83,10 +85,13 @@ export default function InvoiceModal(props) {
   const invoice = getInvoiceMeta(props.order);
   const isStandalone = Boolean(props.order?.isStandalone);
   const [layout, setLayout] = useState('form');
+  const [format, setFormat] = useState('form');
 
-  const PreviewForLayout = (previewProps) => (
-    <InvoicePreview {...previewProps} layout={layout} />
-  );
+  const PreviewForFormat = (previewProps) => {
+    if (format === 'buyer') return <BuyerInvoiceDocument {...previewProps} />;
+    if (format === 'bank') return <BankInvoiceDocument {...previewProps} />;
+    return <InvoicePreview {...previewProps} layout={layout} />;
+  };
 
   const fields = isStandalone
     ? [
@@ -105,16 +110,30 @@ export default function InvoiceModal(props) {
       icon={Receipt}
       fields={fields}
       buildDefaults={buildDefaults}
-      Preview={PreviewForLayout}
+      Preview={PreviewForFormat}
       pdfEndpoint="/export/pdf/invoice"
       docxEndpoint="/export/docx/invoice"
-      pdfQuery={`layout=${layout}`}
+      pdfQuery={format === 'form' ? `format=form&layout=${layout}` : `format=${format}`}
       pdfLayout={layout}
-      pdfLayoutOptions={[
+      pdfLayoutOptions={format === 'form' ? [
         { value: 'form', label: '1 per page', hint: 'A4 portrait — single invoice' },
         { value: 'landscape-2up', label: '2 per page', hint: 'A4 landscape — do chhoti copies ek paper par' }
-      ]}
+      ] : []}
       onPdfLayoutChange={setLayout}
+      format={format}
+      onFormatChange={setFormat}
+      formatOptions={[
+        { value: 'form', label: 'Our Format', hint: 'Butt Collection commercial invoice' },
+        { value: 'buyer', label: 'Buyer Invoice', hint: 'Madina Gloves style buyer commercial invoice' },
+        { value: 'bank', label: 'Bank Invoice', hint: 'AQA style bank commercial invoice' }
+      ]}
+      formatHint={
+        format === 'buyer'
+          ? 'Buyer invoice: consignee/notify boxes, shipping marks table, statement on origin. Word export sirf Our Format mein milta hai.'
+          : format === 'bank'
+            ? 'Bank invoice: PO/style/carton grid, say value, bank account details aur export manager signature. Word export sirf Our Format mein milta hai.'
+            : 'Our format: Butt Collection commercial invoice. Buyer ya bank ki apni invoice chahiye to upar se format chunein.'
+      }
       summaryText={`Total ${money(invoice.total)} • Received ${money(invoice.received)} • Balance ${money(invoice.balance)}`}
       helpText={
         isStandalone

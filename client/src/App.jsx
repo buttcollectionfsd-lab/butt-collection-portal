@@ -111,19 +111,45 @@ export default function App() {
     setActiveTab('create-order');
   };
 
+  // Har document kholne se pehle taaza order fetch karein taake purani
+  // (cached list wali) copy edit/save na ho jaye.
+  const refreshOrder = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/orders/${id}`);
+      if (!res.ok) return null;
+      const fresh = await res.json();
+      setOrders(prev => prev.map(o => (o.id === fresh.id ? { ...o, ...fresh } : o)));
+      return fresh;
+    } catch (_) {
+      return null;
+    }
+  };
+
   const handleOpenGatePass = (order) => {
     setSelectedOrderDetails(null);
     setGatePassOrder(order);
+    refreshOrder(order.id).then(fresh => {
+      if (!fresh) return;
+      setGatePassOrder(prev => (prev && prev.id === fresh.id ? { ...prev, ...fresh } : prev));
+    });
   };
 
   const handleOpenPackingList = (order) => {
     setSelectedOrderDetails(null);
     setPackingListOrder(order);
+    refreshOrder(order.id).then(fresh => {
+      if (!fresh) return;
+      setPackingListOrder(prev => (prev && prev.id === fresh.id ? { ...prev, ...fresh } : prev));
+    });
   };
 
   const handleOpenInvoice = (order) => {
     setSelectedOrderDetails(null);
     setInvoiceOrder(order);
+    refreshOrder(order.id).then(fresh => {
+      if (!fresh) return;
+      setInvoiceOrder(prev => (prev && prev.id === fresh.id ? { ...prev, ...fresh } : prev));
+    });
   };
 
   const handleOpenCreateDocuments = (order) => {

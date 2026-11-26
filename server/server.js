@@ -27,6 +27,11 @@ const {
   generateInvoiceDocx
 } = require('./services/docxService');
 const {
+  generateBuyerPackingListPdf,
+  generateBuyerInvoicePdf,
+  generateBankInvoicePdf
+} = require('./services/buyerDocsPdf');
+const {
   findArabicFields,
   sanitizeTextFields,
   collectChangedFields
@@ -41,6 +46,15 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+
+// Exported documents (PDF/DOCX) rozana badalte hain — browser cache mein purani
+// copy na atke, is liye export routes par caching band hai.
+app.use('/api/export', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 
 // Initialize MongoDB Connection
 connectDB();
@@ -819,16 +833,18 @@ app.get('/api/export/pdf/gate-pass/:id', async (req, res) => {
 
     const layout = String(req.query.layout || 'form').toLowerCase();
     const isForm = layout !== 'legacy';
+    const twoPages = ['2pages', 'twopage', 'pages'].includes(layout);
+    const isTwoUp = ['landscape-2up', '2up', 'landscape'].includes(layout);
+    const isCompact = ['compact', 'short', 'khali'].includes(layout);
     const buffer = isForm
       ? await generateGatePassFormPdfBuffer(order, company, {
-          copies: layout === 'landscape-2up' || layout === '2up' || layout === 'landscape' ? 2 : 1,
-          blank: req.query.blank === '1' || req.query.blank === 'true'
+          copies: twoPages ? 'pages' : isTwoUp ? 2 : 1,
+          blank: req.query.blank === '1' || req.query.blank === 'true',
+          compact: isCompact
         })
       : await generateGatePassPdfBuffer(order, company);
     const gateNo = formatGatePassNumber(order).replace(/\s+/g, '_');
-    const layoutSuffix = layout === 'landscape' || layout === 'landscape-2up' || layout === '2up'
-      ? '_Landscape_2up'
-      : '';
+    const layoutSuffix = isCompact ? '_Compact' : twoPages ? '_2copies' : isTwoUp ? '_Landscape_2up' : '';
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
@@ -876,13 +892,17 @@ app.get('/api/export/pdf/packing-list/:id', async (req, res) => {
     const company = await getCompanyInfo();
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
-    const buffer = await generatePackingListPdfBuffer(order, company);
+    const format = String(req.query.format || 'form').toLowerCase();
+    const buffer = format === 'buyer'
+      ? await generateBuyerPackingListPdf(order, company)
+      : await generatePackingListPdfBuffer(order, company);
     const listNo = formatPackingListNumber(order).replace(/\s+/g, '_');
+    const formatSuffix = format === 'buyer' ? '_Buyer_Format' : '';
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `${req.query.inline ? 'inline' : 'attachment'}; filename="${listNo}_Packing_List.pdf"`
+      `${req.query.inline ? 'inline' : 'attachment'}; filename="${listNo}_Packing_List${formatSuffix}.pdf"`
     );
 
     res.send(buffer);
@@ -925,16 +945,27 @@ app.get('/api/export/pdf/invoice/:id', async (req, res) => {
     const company = await getCompanyInfo();
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
+    const format = String(req.query.format || 'form').toLowerCase();
     const layout = String(req.query.layout || 'form').toLowerCase();
-    const copies = layout === 'landscape-2up' || layout === '2up' || layout === 'landscape' ? 2 : 1;
-    const buffer = await generateInvoicePdfBuffer(order, company, { copies });
+    let buffer;
+    let formatSuffix = '';
+    if (format === 'buyer') {
+      buffer = await generateBuyerInvoicePdf(order, company);
+      formatSuffix = '_Buyer_Format';
+    } else if (format === 'bank') {
+      buffer = await generateBankInvoicePdf(order, company);
+      formatSuffix = '_Bank_Format';
+    } else {
+      const copies = layout === 'landscape-2up' || layout === '2up' || layout === 'landscape' ? 2 : 1;
+      buffer = await generateInvoicePdfBuffer(order, company, { copies });
+      formatSuffix = copies === 2 ? '_Landscape_2up' : '';
+    }
     const invoiceNo = formatInvoiceNumber(order).replace(/\s+/g, '_');
-    const layoutSuffix = copies === 2 ? '_Landscape_2up' : '';
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `${req.query.inline ? 'inline' : 'attachment'}; filename="${invoiceNo}_Invoice${layoutSuffix}.pdf"`
+      `${req.query.inline ? 'inline' : 'attachment'}; filename="${invoiceNo}_Invoice${formatSuffix}.pdf"`
     );
 
     res.send(buffer);

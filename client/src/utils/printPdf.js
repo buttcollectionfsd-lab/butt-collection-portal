@@ -62,7 +62,7 @@ function createPrintFrame() {
   return frame;
 }
 
-async function printImages(images, { landscape, copies = 1, title = 'Print' } = {}) {
+export async function printImages(images, { landscape, copies = 1, title = 'Print' } = {}) {
   const repeated = [];
   const copyCount = Math.max(1, Math.min(20, Number(copies) || 1));
   for (let copy = 0; copy < copyCount; copy += 1) {
@@ -120,6 +120,74 @@ export async function getPdfPageCount(source) {
   const params = typeof source === 'string' ? { url: source } : { data: source };
   const pdf = await pdfjs.getDocument(params).promise;
   return pdf.numPages;
+}
+
+/**
+ * Print preview stats: kitne A4 pages hain, orientation kya hai, aur aakhri
+ * page par content kitni door tak aata hai (baqi jagah khali).
+ *
+ * Aakhri page ko halka render karke neeche se pehla "ink" pixel dhoonda jata
+ * hai. Page ke kinare (frame/border lines) ignore hote hain taake framed
+ * documents (packing list, invoice) ghalat 100% na dikhayen.
+ */
+export async function getPdfPrintStats(source) {
+  const pdfjs = await loadPdfjs();
+  const params = typeof source === 'string' ? { url: source } : { data: source };
+  const pdf = await pdfjs.getDocument(params).promise;
+  const pages = pdf.numPages;
+  const page = await pdf.getPage(pages);
+  const baseViewport = page.getViewport({ scale: 1 });
+  const orientation = baseViewport.width > baseViewport.height ? 'landscape' : 'portrait';
+
+  const scale = Math.min(1, 640 / Math.max(baseViewport.width, baseViewport.height));
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.ceil(viewport.width));
+  canvas.height = Math.max(1, Math.ceil(viewport.height));
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  await page.render({ canvasContext: context, viewport, canvas, intent: 'print' }).promise;
+
+  const { data, width, height } = context.getImageData(0, 0, canvas.width, canvas.height);
+  const bandX = Math.round(width * 0.05);
+  const bandY = Math.round(height * 0.05);
+  // Sirf mote content rows ko ginte hain — cut guide / page frame jaisi
+  // patli lines (1-2 px) "content" nahi manein.
+  const minInkPixels = Math.max(4, Math.round(width * 0.005));
+
+  const inkRows = [];
+  for (let y = bandY; y <= height - 1 - bandY; y += 1) {
+    let inkPixels = 0;
+    for (let x = bandX; x < width - bandX; x += 1) {
+      const i = (y * width + x) * 4;
+      if (data[i] < 238 || data[i + 1] < 238 || data[i + 2] < 238) {
+        inkPixels += 1;
+        if (inkPixels >= minInkPixels) break;
+      }
+    }
+    if (inkPixels >= minInkPixels) inkRows.push(y);
+  }
+
+  // Page ke bilkul neeche koi chhota footer ("Thank you…") ho to usay main
+  // content se alag rakhein: bara khali gap aaye to wahin content khatam.
+  const maxGap = Math.round(height * 0.08);
+  let contentBottom = inkRows.length ? inkRows[0] : -1;
+  for (let i = 1; i < inkRows.length; i += 1) {
+    if (inkRows[i] - contentBottom <= maxGap) contentBottom = inkRows[i];
+    else break;
+  }
+
+  const contentRatio = contentBottom < 0 ? 0 : contentBottom / height;
+  const usable = 0.9;
+  const fillPercent = Math.max(0, Math.min(100, Math.round(((contentRatio - 0.05) / usable) * 100)));
+
+  return {
+    pages,
+    orientation,
+    fillPercent,
+    blankPercent: 100 - fillPercent,
+    widthPt: Math.round(baseViewport.width),
+    heightPt: Math.round(baseViewport.height)
+  };
 }
 
 export async function printPdf(source, { copies = 1, title = 'Print' } = {}) {

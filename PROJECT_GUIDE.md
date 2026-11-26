@@ -114,6 +114,7 @@ butt-collection-portal/
 │   ├── services/               # Document generators
 │   │   ├── excelService.js     # 3-sheet styled workbook
 │   │   ├── pdfService.js       # Work order, gate pass, packing list, invoice PDFs + 4 label templates
+│   │   ├── buyerDocsPdf.js     # Buyer packing/weight list + buyer & bank commercial invoice PDFs
 │   │   └── docxService.js      # Word work order, gate pass, packing list, invoice
 │   └── utils/
 │       ├── arabicScript.js     # Urdu/Arabic detect + strip + field labels
@@ -121,6 +122,7 @@ butt-collection-portal/
 │       ├── gatePass.js         # Gate pass number + meta + totals
 │       ├── packingList.js      # Packing list number, carton groups, weights, CBM
 │       ├── invoice.js          # Invoice number + totals + payment status
+│       ├── exportFormats.js    # Buyer/bank formats: rows, packing blocks, invoice details
 │       └── orderNumber.js      # "6" → "ORDER #006"
 │
 └── client/                     # React frontend (Vite)
@@ -148,8 +150,11 @@ butt-collection-portal/
         │   ├── GatePassDocument.jsx      # Gate pass A4 paper markup
         │   ├── PackingListModal.jsx      # Packing list editor + live preview + PDF
         │   ├── PackingListDocument.jsx   # Packing list A4 paper markup
+        │   ├── BuyerPackingListDocument.jsx # AQA-style buyer packing / weight list preview
         │   ├── InvoiceModal.jsx          # Invoice editor + live preview + PDF
         │   ├── InvoiceDocument.jsx       # Invoice A4 paper markup
+        │   ├── BuyerInvoiceDocument.jsx  # MG-style buyer commercial invoice preview
+        │   ├── BankInvoiceDocument.jsx   # AQA-style bank commercial invoice preview
         │   ├── CreateDocumentsModal.jsx  # Create/open gate pass, packing list & invoice
         │   ├── DocumentEditorModal.jsx   # Shared editor/preview shell for order documents
         │   ├── DocumentItemsEditor.jsx   # Items editor used by standalone packing list / invoice
@@ -159,6 +164,7 @@ butt-collection-portal/
         └── utils/
             ├── arabicScript.js
             ├── company.js      # Company/factory address helper
+            ├── buyerFormats.js # Buyer/bank formats: rows, packing blocks, invoice details
             ├── gatePass.js     # Client mirror of gate pass meta/totals
             ├── packingList.js  # Client mirror of packing groups/totals
             ├── invoice.js      # Client mirror of invoice meta
@@ -268,8 +274,8 @@ Base: `http://localhost:5000/api`
 | GET | `/export/pdf/order/:id` | Work order PDF |
 | GET | `/export/pdf/label/:id?template=` | Carton label PDF (4 templates) |
 | GET | `/export/pdf/gate-pass/:id` | Dispatch gate pass PDF (`?inline=1` iframe; `?layout=form` portrait form, `?layout=landscape-2up` A4 landscape with 2 copies) |
-| GET | `/export/pdf/packing-list/:id` | Packing list PDF (`?inline=1` for iframe) |
-| GET | `/export/pdf/invoice/:id` | Commercial invoice PDF (`?inline=1` for iframe; `?layout=landscape-2up` A4 landscape with 2 copies) |
+| GET | `/export/pdf/packing-list/:id?format=form\|buyer` | Packing list PDF (`?inline=1` for iframe; `format=buyer` AQA-style packing/weight list) |
+| GET | `/export/pdf/invoice/:id?format=form\|buyer\|bank` | Commercial invoice PDF (`?inline=1` for iframe; `format=buyer` MG-style buyer invoice, `format=bank` AQA-style bank invoice; our format `?layout=landscape-2up` A4 landscape with 2 copies) |
 | GET | `/export/docx/order/:id` | Work order Word document |
 | GET | `/export/docx/gate-pass/:id` | Gate pass Word document |
 | GET | `/export/docx/packing-list/:id` | Packing list Word document |
@@ -355,21 +361,33 @@ Orders store hi documents ka single source hai; standalone records `isStandalone
   - `minimal_clean` — rounded border, ruled lines
   - `top_ctn` — top CTN# box, buyer/sets dual box, table, bottom total
 - `generateGatePassPdfBuffer(order, company)` — legacy blue-header gate pass (kept as fallback).
-- `generateGatePassFormPdfBuffer(order, company, { copies, blank })` — factory stationery form: company header + GATE PASS box (OUTWARD/RETURNABLE checkboxes, SR. NO.), underlined Party/Date/Through/Vehicle/Driver fields, 12-row SR · DESCRIPTION · UNIT · QUANTITY · REMARKS table with Total row, dispatch reference strip, 3 signature lines. `copies: 1` → A4 portrait; `copies: 2` → A4 landscape sheet with two identical copies side by side + dashed cut guide. 12 se zyada items hon to har page 12 rows ke saath continuation sheet banti hai (2-up mein har sheet par do copies). `blank: true` → empty form for handwriting.
+- `generateGatePassFormPdfBuffer(order, company, { copies, blank })` — factory stationery form: company header + GATE PASS box (OUTWARD/RETURNABLE checkboxes, SR. NO.), underlined Party/Date/Through/Vehicle/Driver fields, 12-row SR · DESCRIPTION · BORA / CTN · QTY (PCS) · WEIGHT (KG/G) · REMARKS table with Total row (bora + pcs + weight totals; wazan unit `gatePassWeightUnit` = kg ya g — grams bina comma print hote hain) aur table ke neeche bold `Total Weight: 127050 g` line, dispatch reference strip, 3 signature lines. `copies: 1` → A4 portrait; `copies: 2` → A4 landscape sheet with two identical copies side by side + dashed cut guide. 12 se zyada items hon to har page 12 rows ke saath continuation sheet banti hai (2-up mein har sheet par do copies). `blank: true` → empty form for handwriting.
 - `generatePackingListPdfBuffer(order, company)` — 8-field meta, colour/size breakdown table, carton details (range, description, pcs/carton, cartons, pcs), weight & volume box (net/gross/CBM), notes, 2 signatures.
 - `generateInvoicePdfBuffer(order, company, { copies })` — invoice meta + payment status badge, bill-to box, items table, totals, three financial cards (subtotal/received/balance), notes & bank details, signature. `copies: 2` → A4 landscape sheet with two scaled copies side by side + dashed cut guide (12 line items tak; zyada items par single-copy pages).
 
 **`docxService.js`** — editable Word documents:
 - `generateOrderDocx(order, company)` — company header, meta table, items table (with total row), ledger section, signature block. `docTitle`, `docStatus`, `footerLeft`, `footerRight` bhi print hote hain.
-- `generateGatePassDocx(order, company)` — same gate-pass form structure in Word: header block + GATE PASS box, underlined party/transport fields, 12-row table, reference strip, 3 signature lines, footer note.
+- `generateGatePassDocx(order, company)` — same gate-pass form structure in Word: header block + GATE PASS box, underlined party/transport fields, 12-row table, bold `Total Weight:` line, reference strip, 3 signature lines, footer note.
 - `generatePackingListDocx(order, company)` — size breakdown, carton details, weight table with blanks when values are empty, notes, 2 signatures.
 - `generateInvoiceDocx(order, company)` — meta table, items, totals table, notes/bank table, signature.
 
-All order documents share the company address fallback (`server/utils/companyInfo.js` → client `utils/company.js`): **Ayub Colony, Fsd, Nazamabad Street No 9, Center Mill Road** (factory / office).
+All order documents share the company address fallback (`server/utils/companyInfo.js` → client `utils/company.js`): **Ayub Colony, Fsd, Street No 9, Center Mill Road** (factory / office).
 
-**Gate pass editability:** gate pass ke har visible element ke overrides order par save hote hain — `gatePassTitle`, `gatePassGeneratedOn`, `gatePassCompanyName/Tagline/Address`, `gatePassCustomer`, `gatePassOrderNo`, `gatePassPreparedBy/AuthorizedBy/ReceivedBy`, `gatePassFooterNote`, aur `gatePassItems[]` (style, GSM, color, cartons, qty, remarks). `gatePassThrough` + `gatePassDriverCell` blank-form ke Through Mr. / Driver Cell No. fields bharte hain. Wording detail `gatePassVehicle`, `gatePassDriver`, `gatePassDestination`, `gatePassPurpose`, `gatePassRemarks` reference strip mein print hoti hai. Empty override ka matlab fallback (company profile / order items). Shared logic `server/utils/gatePass.js` + client `utils/gatePass.js`; PDF/Word/preview teeno same values use karte hain.
+**Gate pass editability:** gate pass ke har visible element ke overrides order par save hote hain — `gatePassTitle`, `gatePassGeneratedOn`, `gatePassCompanyName/Tagline/Address`, `gatePassCustomer`, `gatePassOrderNo` + `gatePassOrderLabel` (reference line ka label; default "Order #" — user yahan "GP No." bhi likh sakta hai), `gatePassTotalWeightLabel` + `gatePassTotalWeightValue` (table ke neeche wali total weight line ka label/value manually editable; value khali = rows ka auto total), `gatePassPreparedBy/AuthorizedBy/ReceivedBy`, `gatePassFooterNote`, aur `gatePassItems[]` (style/description, GSM, color, cartons=bora, qty, weight, remarks) — har dispatch line alag row. Agar bora-wise sirf wazan likhna ho, `gatePassPcsMode = 'total'` + `gatePassTotalPcs` (e.g. 199) — rows ke pcs khali rehte hain aur Total row mein hi total pieces print hote hain. `gatePassThrough` + `gatePassDriverCell` blank-form ke Through Mr. / Driver Cell No. fields bharte hain. Wording detail `gatePassVehicle`, `gatePassDriver`, `gatePassDestination`, `gatePassPurpose`, `gatePassRemarks` reference strip mein print hoti hai. Empty override ka matlab fallback (company profile / order items). Shared logic `server/utils/gatePass.js` + client `utils/gatePass.js`; PDF/Word/preview teeno same values use karte hain.
 
-**Gate pass print layouts:** `GatePassModal` mein **Print Layout** toggle — `1 per page` (A4 portrait) ya `2 per page` (A4 landscape, do copies ek paper par, beech mein dashed cut guide). Toggle PDF + inline preview URL dono ko `?layout=form` / `?layout=landscape-2up` bhejta hai; in-app paper preview bhi do copies dikhata hai. Wohi **Print Layout** toggle ab `InvoiceModal` mein bhi hai (invoice do chhoti copies ek landscape page par, 12 items tak).
+**Gate pass print layouts:** `GatePassModal` mein **Print Layout** toggle — `1 per page` (A4 portrait, 12 rows), `Compact` (A4 portrait, sirf itni rows jitne items — khali numbered lines nahi, signatures table ke qareeb), `2 copies (2 pages)` (do full-size portrait pages, har page par ek copy) ya `2 per page` (A4 landscape, do copies ek paper par, beech mein dashed cut guide). Toggle PDF + inline preview URL dono ko `?layout=form` / `?layout=landscape-2up` bhejta hai; in-app paper preview bhi do copies dikhata hai. Wohi **Print Layout** toggle ab `InvoiceModal` mein bhi hai (invoice do chhoti copies ek landscape page par, 12 items tak).
+
+**Buyer / bank document formats:** `PackingListModal` aur `InvoiceModal` mein **Document Format** toggle + `PrintCenterModal` mein format picker:
+
+| Document | Format | Kya milta hai |
+|---|---|---|
+| Packing List | Our Format | Butt Collection factory packing list (colour/size breakdown, carton details, weights) |
+| Packing List | Buyer Format | AQA style packing / weight list — letterhead, ORDER #/CUSTOMER/DATED/TOTAL CARTONS/TOTAL PCS strip, 30-pcs carton-mix blocks with black XS–XL size header, Pcs / Colour, Total Pcs / Carton, Total PCS, block TOTAL, footer carton/pcs/weight summary and carton-size note |
+| Invoice | Our Format | Butt Collection commercial invoice (1 per page ya 2-up landscape) |
+| Invoice | Buyer Invoice | MG style buyer commercial invoice — rounded consignee/notify boxes, yellow bank + F.I highlight, shipping-marks table, statement on origin |
+| Invoice | Bank Invoice | AQA style bank commercial invoice — gradient letterhead, PO#/style#/CTN# grid, colour rows, say value, DCTS declaration, bank account box, export manager signature |
+
+PDF query `?format=form|buyer|bank` (packing list: `form|buyer`) — `format=buyer|bank` ignore karta hai `layout` ko; Word export sirf Our Format mein milta hai. Shared data shaping: `server/utils/exportFormats.js` (server) aur `client/src/utils/buyerFormats.js` (preview). PDF generators `server/services/buyerDocsPdf.js`; previews `BuyerPackingListDocument.jsx`, `BuyerInvoiceDocument.jsx`, `BankInvoiceDocument.jsx`.
 
 **Derived numbers:** gate pass `GP-###`, packing list `PL-###`, invoice `INV-###`, where `###` comes from the order number digits. Inline PDFs use `Content-Disposition: inline`, downloads use `attachment`.
 
@@ -423,7 +441,7 @@ Yeh bhi karta hai: saved records mein `findArabicIssues(orders/payments/labels)`
 | `DocumentEditorModal` | Modal shell | Shared left editor + right Document/PDF tabs, dirty-state pill, optional `pdfQuery` + layout toggle, save + **Print (full settings)** + PDF/Word/new-tab actions |
 | `PrintCenterModal` | Modal | Saved document ya computer file choose karke print: doc type, layout (1/2 per page), copies; browser print dialog paper/orientation/margins/scale ke liye |
 | `DocumentItemsEditor` | Shared editor | Standalone packing list / invoice ke liye items rows (style, GSM, color, qty, cartons/rate, computed amount) add/remove |
-| `GatePassModal` / `PackingListModal` / `InvoiceModal` | Modal wrappers | Field definitions + defaults + paper preview wired into `DocumentEditorModal`; Gate Pass additionally has grouped header/details/signature sections and a full dispatch-items editor (add/remove/reset rows); Gate Pass aur Invoice dono mein **Print Layout** toggle (1 per page / 2 per landscape page), invoice ka 2-up preview bhi do copies dikhata hai |
+| `GatePassModal` / `PackingListModal` / `InvoiceModal` | Modal wrappers | Field definitions + defaults + paper preview wired into `DocumentEditorModal`; Gate Pass additionally has grouped header/details/signature sections and a full dispatch-items editor (add/remove/reset rows); Gate Pass aur Invoice dono mein **Print Layout** toggle (1 per page / 2 per landscape page), invoice ka 2-up preview bhi do copies dikhata hai; Packing List aur Invoice mein **Document Format** toggle (Our / Buyer / Bank) jo preview aur PDF dono badalta hai |
 | `GatePassDocument` / `PackingListDocument` / `InvoiceDocument` | Shared | A4 paper markup mirroring the PDF output with the factory address; gate pass matches the factory's pre-printed stationery form (GATE PASS box, underlined transport fields, 12-row table, 3 signatures) and uses all editable overrides |
 | `WorkOrderDocument` | Shared | A4 work-order paper markup (docTitle/docStatus/footer/financials) — form preview + viewer dono use karte hain |
 | `WorkOrderPreview` | Modal | Live form preview overlay |
@@ -454,6 +472,7 @@ Yeh bhi karta hai: saved records mein `findArabicIssues(orders/payments/labels)`
 - `utils/printPdf.js` PDF ko pdf.js se (lazy-loaded chunk, `intent: 'print'` — background tab mein bhi atakta nahi) images mein render karta hai, phir ek hidden iframe (210×297mm, off-screen) mein print-ready HTML likh kar `iframe.contentWindow.print()` chalata hai. Print dialog mein user paper size, orientation, margins, scale aur printer copies set karta hai; in-app `copies` PDF pages ko repeat karta hai.
 - Computer ki file: PDF → same pipeline; image → direct print; Word support nahi (pehle PDF mein save karein).
 - `OrderDocumentsTab` ka **Print Center** saved order/standalone document ya computer file print karta hai; har document modal ka **Print (full settings)** button current layout ke saath seedha print dialog kholta hai.
+- **A4 Paper Check** (Print Center + document modal): `getPdfPrintStats()` PDF ki aakhri page ko halka render karke batata hai kitne A4 pages hain, orientation kya hai, aur aakhri page kitna % bhara / khali hai. Patli lines (frame, 2-up cut guide) aur page ke bilkul neeche wala isolated footer ignore hote hain, is liye estimate asli content tak ginta hai. Copies ke saath total sheets bhi dikhti hain (`pages × copies`).
 - Koi popup/window nahi khulta (pehle naya print window render se pehle focus le leta tha jis se pdf.js rendering ruk jati thi — ab render foreground tab mein hota hai, phir iframe print karta hai).
 
 ### 7.6 Frontend API calls — sab `localhost:5000` par

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   X,
   Printer,
@@ -14,7 +14,7 @@ import {
 import { getGatePassMeta } from '../utils/gatePass';
 import { getPackingMeta } from '../utils/packingList';
 import { getInvoiceMeta } from '../utils/invoice';
-import { printPdf, printLocalFile } from '../utils/printPdf';
+import { printPdf, printLocalFile, getPdfPrintStats } from '../utils/printPdf';
 
 const API_BASE = 'http://localhost:5000/api';
 
@@ -53,6 +53,19 @@ const LAYOUTS = [
   { value: 'landscape-2up', label: '2 per page', hint: 'A4 landscape — do copies ek paper par' }
 ];
 
+const FORMATS = {
+  gatePass: [],
+  packingList: [
+    { value: 'form', label: 'Our Format', hint: 'Butt Collection factory packing list' },
+    { value: 'buyer', label: 'Buyer Format', hint: 'AQA style packing / weight list (30 pcs carton mix)' }
+  ],
+  invoice: [
+    { value: 'form', label: 'Our Format', hint: 'Butt Collection commercial invoice' },
+    { value: 'buyer', label: 'Buyer Invoice', hint: 'Madina style buyer commercial invoice' },
+    { value: 'bank', label: 'Bank Invoice', hint: 'AQA style bank commercial invoice' }
+  ]
+};
+
 export default function PrintCenterModal({ orders = [], standaloneDocs = [], onClose }) {
   const documents = useMemo(
     () => [
@@ -69,20 +82,63 @@ export default function PrintCenterModal({ orders = [], standaloneDocs = [], onC
   const [selectedId, setSelectedId] = useState(documents[0]?.id || '');
   const [docType, setDocType] = useState('gatePass');
   const [layout, setLayout] = useState('form');
+  const [format, setFormat] = useState('form');
   const [copies, setCopies] = useState(1);
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState('');
 
   const selectedDoc = documents.find(doc => doc.id === selectedId) || documents[0] || null;
   const typeConfig = TYPES.find(item => item.type === docType) || TYPES[0];
-  const layoutQuery = typeConfig.hasLayout ? `?layout=${layout}` : '';
+  const formatOptions = FORMATS[docType] || [];
+  const params = new URLSearchParams();
+  if (format !== 'form') params.set('format', format);
+  if (format === 'form' && typeConfig.hasLayout) params.set('layout', layout);
+  const queryString = params.toString() ? `?${params.toString()}` : '';
 
   const pdfUrl = selectedDoc
-    ? `${API_BASE}/export/pdf/${typeConfig.endpoint}/${selectedDoc.id}${layoutQuery}`
+    ? `${API_BASE}/export/pdf/${typeConfig.endpoint}/${selectedDoc.id}${queryString}`
     : '';
 
   const docMeta = selectedDoc && typeConfig.meta ? typeConfig.meta(selectedDoc) : null;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      setStats(null);
+      setStatsError('');
+      if (source === 'app' && !pdfUrl) return;
+      if (source === 'file' && !file) return;
+
+      try {
+        setStatsLoading(true);
+        let result = null;
+        if (source === 'app') {
+          result = await getPdfPrintStats(pdfUrl);
+        } else if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+          const buffer = await file.arrayBuffer();
+          result = await getPdfPrintStats(new Uint8Array(buffer));
+        } else {
+          result = { pages: 1, orientation: 'portrait', fillPercent: null, blankPercent: null };
+        }
+        if (!cancelled) setStats(result);
+      } catch (err) {
+        if (!cancelled) setStatsError('Page estimate nahi ban saka — PDF preview check karein.');
+      } finally {
+        if (!cancelled) setStatsLoading(false);
+      }
+    };
+
+    const timer = setTimeout(run, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [source, pdfUrl, file]);
 
   const handlePrint = async () => {
     setError('');
@@ -195,7 +251,7 @@ export default function PrintCenterModal({ orders = [], standaloneDocs = [], onC
                       <button
                         key={item.type}
                         type="button"
-                        onClick={() => setDocType(item.type)}
+                        onClick={() => { setDocType(item.type); setFormat('form'); }}
                         className={`flex items-center space-x-2 px-3 py-2.5 rounded-xl text-[11px] font-extrabold border-2 transition ${
                           active
                             ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
@@ -255,7 +311,30 @@ export default function PrintCenterModal({ orders = [], standaloneDocs = [], onC
               Print Settings
             </p>
 
-            {source === 'app' && typeConfig.hasLayout && (
+            {source === 'app' && formatOptions.length > 0 && (
+              <div>
+                <p className="text-[10px] font-bold text-slate-600 mb-1">Document Format</p>
+                <div className="flex flex-wrap gap-1 p-1 bg-slate-100 border border-slate-300 rounded-xl">
+                  {formatOptions.map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setFormat(option.value)}
+                      title={option.hint}
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-[10px] font-extrabold transition ${
+                        format === option.value
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-600 hover:bg-white'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {source === 'app' && typeConfig.hasLayout && format === 'form' && (
               <div>
                 <p className="text-[10px] font-bold text-slate-600 mb-1">Layout</p>
                 <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 border border-slate-300 rounded-xl">
@@ -309,6 +388,63 @@ export default function PrintCenterModal({ orders = [], standaloneDocs = [], onC
               </span>
             </div>
           </div>
+
+          {/* A4 paper check */}
+          {(source === 'app' ? Boolean(selectedDoc) : Boolean(file)) && (
+            <div className="bg-white border-2 border-sky-200 rounded-xl p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-sky-700">
+                  A4 Paper Check
+                </p>
+                {statsLoading && (
+                  <span className="flex items-center space-x-1 text-[10px] font-bold text-slate-500">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>Calculate ho raha hai...</span>
+                  </span>
+                )}
+              </div>
+
+              {stats ? (
+                <>
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg py-1.5">
+                      <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">Pages (A4)</p>
+                      <p className="text-base font-extrabold text-slate-900">{stats.pages}</p>
+                    </div>
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg py-1.5">
+                      <p className="text-[9px] font-bold uppercase tracking-wide text-emerald-700">Aakhri page bhara</p>
+                      <p className="text-base font-extrabold text-emerald-800">
+                        {stats.fillPercent == null ? '—' : `${stats.fillPercent}%`}
+                      </p>
+                    </div>
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg py-1.5">
+                      <p className="text-[9px] font-bold uppercase tracking-wide text-amber-700">Khali jagah</p>
+                      <p className="text-base font-extrabold text-amber-800">
+                        {stats.blankPercent == null ? '—' : `${stats.blankPercent}%`}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-1.5 text-[10px] text-slate-600">
+                    {stats.orientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'} •{' '}
+                    {stats.pages} page × {copies} cop{copies > 1 ? 'ies' : 'y'} ={' '}
+                    <b>{stats.pages * copies} sheet(s)</b>
+                    {source === 'app' && typeConfig.hasLayout && format === 'form' && layout === 'landscape-2up' && (
+                      <> • har sheet par 2 copies</>
+                    )}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-slate-500">
+                    Aakhri page par content ke baad ki jagah khali print hogi. Zyada khali ho to 2-per-page choose karein ya rows kam karein.
+                  </p>
+                </>
+              ) : (
+                !statsLoading && (
+                  <p className="mt-1 text-[10px] text-slate-500">
+                    {statsError || 'Document select karein — phir pages aur khali jagah ka estimate yahan aayega.'}
+                  </p>
+                )
+              )}
+            </div>
+          )}
 
           {error && (
             <div className="bg-rose-50 border border-rose-300 text-rose-800 rounded-xl px-3 py-2 text-[11px] font-semibold">

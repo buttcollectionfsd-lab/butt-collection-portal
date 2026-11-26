@@ -1,4 +1,4 @@
-const FACTORY_ADDRESS = 'Ayub Colony, Fsd, Nazamabad Street No 9, Center Mill Road';
+const FACTORY_ADDRESS = 'Ayub Colony, Fsd, Street No 9, Center Mill Road';
 
 function getCompanyAddress(company) {
   return String(company?.address || FACTORY_ADDRESS).trim();
